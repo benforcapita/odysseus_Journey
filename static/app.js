@@ -14,6 +14,7 @@ import chatModule from './js/chat.js?v=20260815toolapproval4';
 import compareModule from './js/compare/index.js?v=20260723compareicon2';
 import documentModule from './js/document.js?v=20260815approvalsave1';
 import searchChatModule from './js/search-chat.js';
+import commandPaletteModule from './js/commandPalette.js';
 import { makeWindowDraggable } from './js/windowDrag.js';
 import {
   revealApplicationShellAfterPaint,
@@ -685,6 +686,11 @@ function initializeEventListeners() {
         return;
       }
 
+
+      if (commandPaletteModule && commandPaletteModule.isOpen()) {
+        commandPaletteModule.close();
+        return;
+      }
       if (searchChatModule && searchChatModule.isOpen()) {
         searchChatModule.closeSearch();
         return;
@@ -3652,6 +3658,7 @@ function initializeEventListeners() {
   initKeyboardShortcuts({
     el, Storage, sessionModule, uiModule, chatModule,
     adminModule, settingsModule, searchChatModule,
+    commandPaletteModule,
     _closeCompareIfActive, _deactivateIncognito, API_BASE
   });
   
@@ -3728,6 +3735,7 @@ function startOdysseusApp() {
     searchChatModule.init(API_BASE);
   }
 
+  if (commandPaletteModule) commandPaletteModule.init();
   // Search buttons — icon rail + sidebar
   const railSearchBtn = el('rail-search-btn');
   if (railSearchBtn) {
