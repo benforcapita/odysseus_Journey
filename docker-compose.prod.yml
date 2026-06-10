@@ -1,24 +1,58 @@
+# Odysseus — production Docker Compose with HTTPS reverse proxy (Caddy)
+#
+# Usage:
+#   1. Copy .env.example to .env and configure secrets
+#   2. Set ODYSSEUS_DOMAIN in .env or export it (hostname or IP)
+#   3. docker compose -f docker-compose.prod.yml up -d
+#
+# For GPU passthrough, use one of the GPU overlays:
+#   docker compose -f docker-compose.prod.yml -f docker/gpu.nvidia.yml up -d
+#
+# PWA: Caddy provides HTTPS (required for service-worker registration
+# on non-localhost origins), so the PWA install prompt appears in browsers.
+
 services:
+  # ── Reverse proxy (TLS termination) ───────────────────────────
+  caddy:
+    image: docker.io/caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+      - "${CADDY_HTTPS_PORT:-443}:443/udp"   # HTTP/3 (QUIC)
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro,z
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      - ODYSSEUS_DOMAIN=${ODYSSEUS_DOMAIN:-localhost}
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      - odysseus
+
+  # ── Odysseus app ──────────────────────────────────────────────
   odysseus:
     build: .
-    ports:
-      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-7000}:7000"
+    restart: unless-stopped
+    # Expose only on the internal Docker network — Caddy handles inbound TLS.
+    expose:
+      - "7000"
     volumes:
       - ./data:/app/data:z
       - ./logs:/app/logs:z
-      # Cookbook remote-server SSH identity. Odysseus can generate a key here;
-      # add the shown public key to each remote server's authorized_keys.
       - ./data/ssh:/app/.ssh:z
-      # Cookbook local model cache. Inside Docker, "Local" means the Odysseus
-      # container, so persist its HuggingFace cache under ./data/huggingface.
       - ./data/huggingface:/app/.cache/huggingface:z
-      # Cookbook-installed Python CLIs/packages (vLLM, llama-cpp-python, etc.)
-      # land under /app/.local for the odysseus user. Persist them so a
-      # container recreate does not silently remove installed serve engines.
       - ./data/local:/app/.local:z
     extra_hosts:
-      # Lets the container reach local services on the Docker host, including
-      # Ollama at http://host.docker.internal:11434.
       - "host.docker.internal:host-gateway"
     environment:
       - LLM_HOST=${LLM_HOST:-localhost}
@@ -37,10 +71,9 @@ services:
       - ODYSSEUS_ADMIN_USER=${ODYSSEUS_ADMIN_USER:-admin}
       - ODYSSEUS_ADMIN_PASSWORD=${ODYSSEUS_ADMIN_PASSWORD:-}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1}
-      - SECURE_COOKIES=${SECURE_COOKIES:-false}
+      - SECURE_COOKIES=${SECURE_COOKIES:-true}
       - EMBEDDING_URL=${EMBEDDING_URL:-}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-}
-      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-}
       - FASTEMBED_MODEL=${FASTEMBED_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
       - FASTEMBED_CACHE_PATH=${FASTEMBED_CACHE_PATH:-}
       - CLEANUP_INTERVAL_HOURS=${CLEANUP_INTERVAL_HOURS:-24}
@@ -52,14 +85,6 @@ services:
       - GOOGLE_PSE_CX=${GOOGLE_PSE_CX:-}
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       - SERPER_API_KEY=${SERPER_API_KEY:-}
-      # PUID / PGID — the user/group the container drops to before
-      # running uvicorn (entrypoint also chowns /app/data + /app/logs
-      # to match, so bind-mounted files stay editable from the host).
-      # 1000 is the default first user on most Linux installs. If your
-      # host user has a different id, override here or via .env, e.g.:
-      #   PUID=1001
-      #   PGID=1001
-      # Find yours with:  id -u  /  id -g
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
     depends_on:
@@ -67,25 +92,44 @@ services:
         condition: service_healthy
       chromadb:
         condition: service_started
-    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${ODYSSEUS_MEMORY_LIMIT:-4g}
+        reservations:
+          memory: ${ODYSSEUS_MEMORY_RESERVATION:-512m}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:7000/', timeout=5).read(1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
+  # ── ChromaDB (vector store) ───────────────────────────────────
   chromadb:
     image: docker.io/chromadb/chroma:latest
-    ports:
-      - "${CHROMADB_BIND:-127.0.0.1}:8101:8000"
+    restart: unless-stopped
     volumes:
       - chromadb-data:/chroma/chroma
     environment:
       - ANONYMIZED_TELEMETRY=FALSE
-    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${CHROMADB_MEMORY_LIMIT:-1g}
+        reservations:
+          memory: ${CHROMADB_MEMORY_RESERVATION:-256m}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v2/heartbeat', timeout=3)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
+  # ── SearXNG (private web search) ──────────────────────────────
   searxng:
-    # Pinned, not :latest — odysseus waits on searxng's healthcheck
-    # (depends_on: condition: service_healthy), so a broken upstream `latest`
-    # tag blocks the whole app from starting. 2026.6.2 crashes on boot with
-    # `KeyError: 'default_doi_resolver'`, failing the healthcheck (issue #1414).
-    # Bump this deliberately after verifying a newer tag boots clean.
     image: docker.io/searxng/searxng:2026.5.31-7159b8aed
+    restart: unless-stopped
     entrypoint:
       - /bin/sh
       - -c
@@ -99,21 +143,12 @@ services:
           sed "s|__SEARXNG_SECRET__|$$secret|g" /tmp/searxng-settings.yml.template > /etc/searxng/settings.yml
         fi
         exec /usr/local/searxng/entrypoint.sh
-    ports:
-      - "127.0.0.1:8080:8080"
     volumes:
       - searxng-data:/etc/searxng
       - ./config/searxng/settings.yml:/tmp/searxng-settings.yml.template:ro,z
     environment:
       - SEARXNG_BASE_URL=http://localhost:8080/
       - SEARXNG_SECRET=${SEARXNG_SECRET:-}
-    # The official searxng image runs as the non-root `searxng` user, but its
-    # entrypoint still needs to chown /etc/searxng on first boot, drop privs via
-    # su-exec, and (with our wrapper above) write settings.yml into the named
-    # volume. Without these capabilities the wrapper aborts at the redirection
-    # with EACCES and the container fails its healthcheck with permission
-    # errors during setup. Mirrors the cap set recommended by the upstream
-    # searxng-docker compose file. See issue #721.
     cap_drop:
       - ALL
     cap_add:
@@ -121,26 +156,44 @@ services:
       - SETGID
       - SETUID
       - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          memory: ${SEARXNG_MEMORY_LIMIT:-512m}
+        reservations:
+          memory: ${SEARXNG_MEMORY_RESERVATION:-128m}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/', timeout=5).read(1)\""]
       interval: 5s
       timeout: 6s
       retries: 20
       start_period: 10s
-    restart: unless-stopped
 
+  # ── ntfy (push notifications) ─────────────────────────────────
   ntfy:
     image: docker.io/binwiederhier/ntfy
+    restart: unless-stopped
     command: serve
-    ports:
-      - "${NTFY_BIND:-127.0.0.1}:8091:80"
     volumes:
       - ntfy-cache:/var/cache/ntfy
     environment:
       - NTFY_BASE_URL=${NTFY_BASE_URL:-http://localhost:8091}
-    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${NTFY_MEMORY_LIMIT:-128m}
+        reservations:
+          memory: ${NTFY_MEMORY_RESERVATION:-32m}
+    healthcheck:
+      test: ["CMD", "ntfy", "health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
 volumes:
   searxng-data:
   chromadb-data:
   ntfy-cache:
+  caddy-data:
+  caddy-config:

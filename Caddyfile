@@ -1,0 +1,34 @@
+# Caddy reverse proxy for Odysseus
+# Place your domain(s) below. Caddy auto-provisions Let's Encrypt certificates.
+# For local-only use with a self-signed cert, replace the domain with :443
+# and set tls internal.
+
+{$ODYSSEUS_DOMAIN:localhost} {
+    # Logging
+    log {
+        output stdout
+        level INFO
+    }
+
+    # Gzip compression
+    encode gzip zstd
+
+    # Security headers
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+
+    # Proxy to Odysseus backend
+    reverse_proxy odysseus:7000 {
+        # Flush SSE/streaming responses immediately
+        flush_interval -1
+    }
+
+    # Increase timeout for long-running LLM responses
+    handle_errors {
+        @5xx status >= 500
+        respond @5xx "Backend unavailable" 502
+    }
+}
