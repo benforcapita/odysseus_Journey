@@ -9,6 +9,7 @@ const _defaultKeybinds = {
   fav_session: 'ctrl+alt+f', delete_session: 'ctrl+alt+d',
   cancel: 'escape', tts: 'alt+shift+t',
   incognito: 'ctrl+alt+i', settings: 'ctrl+,', focus_input: 'ctrl+/',
+  command_palette: 'ctrl+shift+p',
   // Open-tool shortcuts (Calendar bound by default; rest unbound).
   open_calendar: 'ctrl+alt+c', open_compare: '', open_cookbook: '',
   open_research: '', open_gallery: '', open_library: '', open_memory: '',
@@ -50,6 +51,7 @@ export function initKeyboardShortcuts(modules) {
   const {
     el, Storage, sessionModule, uiModule, chatModule,
     adminModule, settingsModule, searchChatModule,
+    commandPaletteModule,
     _closeCompareIfActive, _deactivateIncognito, API_BASE
   } = modules;
 
@@ -62,6 +64,132 @@ export function initKeyboardShortcuts(modules) {
     .catch(() => {});
 
   // ── Esc cancels select mode (capture phase, before modal-close) ──
+
+  // ── Command palette action dispatcher ──────────────────────────────────
+  const _dispatchCommandPalette = (actionId) => {
+    const toolBtns = {
+      open_calendar: 'tool-calendar-btn',
+      open_compare:  'tool-compare-btn',
+      open_cookbook: 'tool-cookbook-btn',
+      open_research: 'tool-research-btn',
+      open_gallery:  'tool-gallery-btn',
+      open_library:  'tool-library-btn',
+      open_memory:   'tool-memory-btn',
+      open_notes:    'tool-notes-btn',
+      open_tasks:    'tool-tasks-btn',
+      open_theme:    'tool-theme-btn',
+      open_email:    'email-section-title',
+      open_settings: 'user-bar-settings',
+    };
+    if (toolBtns[actionId]) {
+      const btn = el(toolBtns[actionId]);
+      if (btn) { btn.click(); return; }
+    }
+    if (actionId === 'new_chat') {
+      const nb = el('sidebar-new-chat-btn');
+      if (nb) { nb.click(); return; }
+      if (sessionModule) {
+        const sid = sessionModule.getCurrentSessionId();
+        const sessions = sessionModule.getSessions();
+        const cur = sid ? sessions.find(s => s.id === sid) : null;
+        const fd = new FormData();
+        fd.append('name', new Date().toLocaleTimeString());
+        fd.append('endpoint_url', cur ? cur.endpoint_url || '' : '');
+        fd.append('model', cur ? cur.model || '' : '');
+        if (cur && cur.endpoint_id) fd.append('endpoint_id', cur.endpoint_id);
+        fd.append('skip_validation', 'true');
+        fetch(`${API_BASE}/api/session`, { method: 'POST', body: fd, credentials: 'same-origin' })
+          .then(r => r.ok ? r.json() : null)
+          .then(async data => {
+            if (data) {
+              await sessionModule.loadSessions();
+              await sessionModule.selectSession(data.id);
+            }
+          });
+      }
+      return;
+    }
+    if (actionId === 'search_chats') {
+      if (searchChatModule) searchChatModule.openSearch();
+      return;
+    }
+    if (actionId === 'focus_input') {
+      const inp = el('message');
+      if (inp) inp.focus();
+      return;
+    }
+    if (actionId === 'toggle_sidebar') {
+      const sidebar = el('sidebar'); if (sidebar) sidebar.classList.toggle('hidden');
+      return;
+    }
+    if (actionId === 'toggle_incognito') {
+      const btn = el('incognito-btn');
+      if (btn) btn.click();
+      return;
+    }
+    if (actionId === 'toggle_window') {
+      if (typeof _toggleActiveWindow === 'function') _toggleActiveWindow();
+      return;
+    }
+    if (actionId === 'fav_session') {
+      const sid = sessionModule && sessionModule.getCurrentSessionId();
+      if (!sid) return;
+      const s = sessionModule.getSessions().find(x => x.id === sid);
+      if (!s) return;
+      const newVal = !s.is_important;
+      const fd = new FormData();
+      fd.append('important', newVal);
+      fetch(`${API_BASE}/api/session/${sid}/important`, { method: 'POST', body: fd });
+      s.is_important = newVal;
+      sessionModule.renderSessionList();
+      if (uiModule && uiModule.showToast) uiModule.showToast(newVal ? 'Session favorited' : 'Session unfavorited');
+      return;
+    }
+    if (actionId === 'delete_session') {
+      const sid = sessionModule && sessionModule.getCurrentSessionId();
+      if (!sid) return;
+      const s = sessionModule.getSessions().find(x => x.id === sid);
+      if (!s) return;
+      if (s.is_important) { if (uiModule && uiModule.showToast) uiModule.showToast('Unstar before deleting'); return; }
+      if (uiModule && uiModule.styledConfirm) {
+        uiModule.styledConfirm('Delete this session?', { confirmText: 'Delete', danger: true }).then(ok => {
+          if (!ok) return;
+          const allSessions = sessionModule.getSessions();
+          const idx = allSessions.findIndex(x => x.id === sid);
+          const nextSession = allSessions.filter(x => !x.archived && x.id !== sid)[Math.max(0, idx)] ||
+                              allSessions.find(x => !x.archived && x.id !== sid);
+          fetch(`${API_BASE}/api/session/${sid}`, { method: 'DELETE' }).then(async () => {
+            await sessionModule.loadSessions();
+            if (nextSession) {
+              await sessionModule.selectSession(nextSession.id);
+            } else {
+              sessionModule.setCurrentSessionId(null);
+              el('chat-history').innerHTML = '';
+              el('current-meta').textContent = 'Odysseus Chat';
+              Storage.remove('lastSessionId');
+              if (chatModule && chatModule.showWelcomeScreen) chatModule.showWelcomeScreen();
+            }
+          });
+        });
+      }
+      return;
+    }
+    if (actionId === 'cancel_generation') {
+      if (chatModule) chatModule.abortCurrentRequest();
+      return;
+    }
+    if (actionId === 'tts') {
+      var mgr = window.aiTTSManager;
+      if (!mgr || !mgr.available) return;
+      if (mgr.isPlaying || mgr._processing) { mgr.stop(); return; }
+      var allAI = document.querySelectorAll('#chat-history .msg-ai');
+      for (var i = allAI.length - 1; i >= 0; i--) {
+        var ttsBtn = allAI[i].querySelector('.ai-tts-button');
+        if (ttsBtn) { ttsBtn.click(); return; }
+      }
+      return;
+    }
+  };
   // Every tool's bulk-select bar has a `*-bulk-cancel` button whose click
   // already runs the correct teardown (clears selection, hides the bar,
   // re-renders). So a single global handler that clicks whichever cancel
@@ -281,6 +409,17 @@ export function initKeyboardShortcuts(modules) {
         if (b) b.click();
         return;
       }
+    }
+    if (_matchesCombo(e, kb.command_palette)) {
+      e.preventDefault();
+      if (commandPaletteModule) {
+        if (commandPaletteModule.isOpen()) {
+          commandPaletteModule.close();
+        } else {
+          commandPaletteModule.open(_dispatchCommandPalette);
+        }
+      }
+      return;
     }
     if (_matchesCombo(e, kb.focus_input)) {
       e.preventDefault();

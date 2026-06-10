@@ -9,6 +9,7 @@ FROM python:3.12-slim
 # gosu lets the entrypoint drop privileges cleanly so signals still reach
 # uvicorn directly (no extra shell layer like `su`/`sudo` would add).
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     build-essential \
     cmake \
     curl \
@@ -26,8 +27,9 @@ WORKDIR /app
 # are opt-in so the default image stays MIT-core; see requirements-optional.txt.
 ARG INSTALL_OPTIONAL=false
 COPY requirements.txt requirements-optional.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
-    && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
+ARG PIP_TRUSTED_HOST=
+RUN pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt \
+       && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements-optional.txt; fi
 
 # Copy app code
 COPY . .
