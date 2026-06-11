@@ -3,13 +3,21 @@ import pytest
 from src.tools_platform.manifest import ManifestError, ToolRegistry
 
 
-def test_default_registry_loads_five_tools():
+def test_default_registry_loads_thirty_tools():
     registry = ToolRegistry.load_default()
-    assert {tool.id for tool in registry.list_tools()} == {
+    tools = registry.list_tools()
+    assert len(tools) == 30
+    ids = {t.id for t in tools}
+    # Verify the original 5 and some of the new ones
+    assert ids >= {
         "json-formatter", "image-resizer", "pdf-toolkit",
         "pii-redactor", "qr-generator",
+        "base64", "url-encoder", "uuid-generator",
+        "hash-generator", "password-generator",
     }
-    assert [tool.id for tool in registry.search("json")] == ["json-formatter"]
+    # Search should find json tools
+    search_results = {t.id for t in registry.search("json")}
+    assert search_results >= {"json-formatter", "json-csv"}
 
 
 def test_registry_rejects_invalid_capabilities(tmp_path: Path):

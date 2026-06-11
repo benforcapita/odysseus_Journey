@@ -59,12 +59,12 @@ def client(engine):
 
 # ── tests ────────────────────────────────────────────────────────────
 
-def test_list_tools_returns_five(client):
+def test_list_tools_returns_thirty(client):
     resp = client.get("/api/tools")
     assert resp.status_code == 200
     data = resp.json()
     ids = {t["id"] for t in data}
-    assert ids == {"json-formatter", "image-resizer", "pdf-toolkit", "pii-redactor", "qr-generator"}
+    assert len(ids) == 30
 
 
 def test_search_tools_by_query(client):
@@ -72,7 +72,7 @@ def test_search_tools_by_query(client):
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) >= 1
-    assert data[0]["id"] == "json-formatter"
+    assert data[0]["id"] in ("json-csv", "json-formatter")
 
 
 def test_list_tools_never_returns_raw_manifest_internals(client):
