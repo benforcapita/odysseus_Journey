@@ -1,0 +1,21 @@
+{
+  "id": "pii-redactor",
+  "version": 1,
+  "name": "Structured PII Redactor",
+  "category": "Privacy",
+  "description": "Redact structured PII patterns like emails, credit card numbers, phone numbers, and SSNs from text in the browser.",
+  "keywords": ["pii", "redact", "privacy", "email", "phone", "credit-card", "ssn", "mask"],
+  "icon": "shield",
+  "entrypoint": "/static/js/tools/views/pii-redactor.js",
+  "execution_modes": ["browser"],
+  "capabilities": [],
+  "risk": "low",
+  "requires_confirmation": false,
+  "accepted_artifacts": ["text"],
+  "produced_artifacts": ["text"],
+  "default_persistence": "none",
+  "output_routing": "download",
+  "operations": [
+    {"id": "redact", "label": "Redact PII", "description": "Find and mask common PII patterns in the input text."}
+  ]
+}
