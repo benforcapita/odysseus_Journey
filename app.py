@@ -770,8 +770,10 @@ logger.info("STT service initialized (provider managed via settings)")
 
 # Documents (artifacts/canvas)
 from routes.document.document_routes import setup_document_routes
+from routes.tools_routes import router as tools_router
 document_router = setup_document_routes(session_manager, upload_handler)
 app.include_router(document_router)
+app.include_router(tools_router)
 
 # Signatures (reusable image stamps)
 from routes.signature_routes import setup_signature_routes
@@ -1234,6 +1236,23 @@ async def _startup_event():
                 await asyncio.sleep(3600)
 
     _startup_tasks.append(asyncio.create_task(_null_owner_sweep_loop()))
+
+    # Hourly expiration of unsaved tool-run metadata (24-hour TTL).
+    async def _tool_run_expiry_loop():
+        while True:
+            await asyncio.sleep(3600)
+            try:
+                from core.database import SessionLocal as _SL
+                from src.tools_platform.history import expire_temporary_runs
+                _db = _SL()
+                try:
+                    await asyncio.to_thread(expire_temporary_runs, _db, ttl_hours=24)
+                finally:
+                    _db.close()
+            except Exception:
+                pass
+
+    _startup_tasks.append(asyncio.create_task(_tool_run_expiry_loop()))
 
     # Nightly skill audit — at ~02:00 local, test + judge a batch of the
     # least-recently-checked skills, auto-fixing/escalating weak ones (never
