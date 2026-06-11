@@ -1,0 +1,23 @@
+{
+  "id": "json-formatter",
+  "version": 1,
+  "name": "JSON Formatter",
+  "category": "Data",
+  "description": "Pretty-print, minify, and validate JSON text in the browser.",
+  "keywords": ["json", "format", "pretty", "minify", "validate"],
+  "icon": "braces",
+  "entrypoint": "/static/js/tools/views/json-formatter.js",
+  "execution_modes": ["browser"],
+  "capabilities": [],
+  "risk": "low",
+  "requires_confirmation": false,
+  "accepted_artifacts": ["text"],
+  "produced_artifacts": ["text"],
+  "default_persistence": "none",
+  "output_routing": "download",
+  "operations": [
+    {"id": "pretty-print", "label": "Pretty Print", "description": "Format JSON with indentation."},
+    {"id": "minify", "label": "Minify", "description": "Remove all whitespace from valid JSON."},
+    {"id": "validate", "label": "Validate", "description": "Check whether the input is valid JSON."}
+  ]
+}

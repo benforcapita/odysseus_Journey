@@ -1,0 +1,23 @@
+{
+  "id": "image-resizer",
+  "version": 1,
+  "name": "Image Resizer",
+  "category": "Images",
+  "description": "Resize, crop, and rotate images in the browser using Canvas.",
+  "keywords": ["image", "resize", "crop", "rotate", "scale", "png", "jpg"],
+  "icon": "image",
+  "entrypoint": "/static/js/tools/views/image-resizer.js",
+  "execution_modes": ["browser"],
+  "capabilities": ["file-read"],
+  "risk": "low",
+  "requires_confirmation": false,
+  "accepted_artifacts": ["image"],
+  "produced_artifacts": ["image"],
+  "default_persistence": "gallery",
+  "output_routing": "gallery",
+  "operations": [
+    {"id": "resize", "label": "Resize", "description": "Scale the image to new pixel dimensions."},
+    {"id": "crop", "label": "Crop", "description": "Crop the image to a selected region."},
+    {"id": "rotate", "label": "Rotate", "description": "Rotate the image by 90, 180, or 270 degrees."}
+  ]
+}

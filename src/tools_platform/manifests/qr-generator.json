@@ -1,0 +1,21 @@
+{
+  "id": "qr-generator",
+  "version": 1,
+  "name": "QR Code Generator",
+  "category": "Generate",
+  "description": "Generate a QR code from text or a URL and save it as a PNG image.",
+  "keywords": ["qr", "code", "barcode", "url", "link"],
+  "icon": "qr-code",
+  "entrypoint": "/static/js/tools/views/qr-generator.js",
+  "execution_modes": ["browser"],
+  "capabilities": [],
+  "risk": "low",
+  "requires_confirmation": false,
+  "accepted_artifacts": ["text"],
+  "produced_artifacts": ["image"],
+  "default_persistence": "gallery",
+  "output_routing": "gallery",
+  "operations": [
+    {"id": "generate", "label": "Generate QR", "description": "Create a QR code PNG from the provided text or URL."}
+  ]
+}

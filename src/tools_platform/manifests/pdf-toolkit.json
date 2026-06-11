@@ -1,0 +1,22 @@
+{
+  "id": "pdf-toolkit",
+  "version": 1,
+  "name": "PDF Toolkit",
+  "category": "Documents",
+  "description": "Merge multiple PDFs or split a PDF into individual pages in the browser using pdf-lib.",
+  "keywords": ["pdf", "merge", "split", "pages", "combine"],
+  "icon": "file-text",
+  "entrypoint": "/static/js/tools/views/pdf-toolkit.js",
+  "execution_modes": ["browser"],
+  "capabilities": ["file-read"],
+  "risk": "low",
+  "requires_confirmation": false,
+  "accepted_artifacts": ["pdf"],
+  "produced_artifacts": ["pdf"],
+  "default_persistence": "library",
+  "output_routing": "library",
+  "operations": [
+    {"id": "merge", "label": "Merge PDFs", "description": "Combine two or more PDF files into a single document."},
+    {"id": "split", "label": "Split PDF", "description": "Extract each page of a PDF into a separate file."}
+  ]
+}
