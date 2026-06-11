@@ -263,6 +263,19 @@ _MCP_TOOL_MAP = {
     "generate_image": ("image_gen",  "generate_image"),
 }
 
+_EMAIL_MCP_TOOLS = {
+    "list_email_accounts",
+    "send_email",
+    "list_emails",
+    "read_email",
+    "reply_to_email",
+    "archive_email",
+    "delete_email",
+    "mark_email_read",
+    "bulk_email",
+    "download_attachment",
+}
+
 
 def _parse_generate_image(content: str) -> Dict:
     lines = content.strip().split("\n")
@@ -531,6 +544,12 @@ async def execute_tool_block(
         }
         logger.warning("Public tool policy blocked owner=%r tool=%s", owner, tool)
         return desc, result
+
+    # Text/fenced tool calls use the legacy bare email names, while native
+    # function calls are normalized in tool_schemas. Normalize here too so
+    # every parser path reaches the same MCP-backed implementation.
+    if tool in _EMAIL_MCP_TOOLS:
+        tool = f"mcp__email__{tool}"
 
     # ask_user: the agent poses a multiple-choice question to the user to get a
     # decision/clarification. This is a pure UI-control marker — no subprocess,
