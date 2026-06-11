@@ -36714,3 +36714,143 @@ body.theme-frosted .modal {
    the input beside it (.confirm-btn won't stretch on its own). */
 .ask-user-other-send { flex-shrink: 0; white-space: nowrap; min-height: 39px; }
 .ask-user-other-send:disabled { opacity: 0.5; cursor: default; }
+
+/* Native Tools Hub */
+@media (min-width: 769px) {
+  #tools-modal {
+    left: calc(var(--icon-rail-w, 48px) + var(--sidebar-w, 0px));
+    width: calc(100% - (var(--icon-rail-w, 48px) + var(--sidebar-w, 0px)));
+    box-sizing: border-box;
+    transition: left 0.25s ease, width 0.25s ease;
+  }
+}
+.tools-modal-content {
+  width: min(1120px, 94vw);
+  height: min(760px, 88vh);
+  max-height: 88vh;
+  overflow: hidden;
+  background: var(--bg);
+}
+.tools-modal-body { flex: 1; min-height: 0; overflow: hidden; }
+.tools-hub {
+  display: grid;
+  grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 8px 12px;
+  height: 100%;
+  min-height: 0;
+}
+.tools-hub-search,
+.tools-hub-filters { grid-column: 1; }
+.tools-hub-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+}
+.tools-hub-filters {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.tools-hub-cat-btn {
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+.tools-hub-cat-btn.active,
+.tools-hub-cat-btn:hover { border-color: var(--accent); color: var(--accent); }
+.tools-hub-list {
+  grid-column: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel);
+}
+.tools-hub-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.tools-hub-card:last-child { border-bottom: 0; }
+.tools-hub-card:hover,
+.tools-hub-card:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  outline: none;
+}
+.tools-hub-card-icon { width: 28px; color: var(--accent); font-size: 11px; overflow: hidden; }
+.tools-hub-card-info { min-width: 0; flex: 1; }
+.tools-hub-card-name { font-weight: 600; }
+.tools-hub-card-category { margin-top: 2px; opacity: 0.55; font-size: 10px; }
+.tools-hub-fav-btn {
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  opacity: 0.55;
+  cursor: pointer;
+  font-size: 16px;
+}
+.tools-hub-fav-btn.is-favorite { color: var(--accent); opacity: 1; }
+.tools-hub-workspace {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel);
+  padding: 14px;
+  box-sizing: border-box;
+}
+.tools-hub-workspace:empty::before {
+  content: 'Choose a tool to begin';
+  display: grid;
+  place-items: center;
+  height: 100%;
+  opacity: 0.45;
+}
+.tool-workspace-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.tool-workspace-header h2 { margin: 0 0 4px; font-size: 18px; }
+.tool-workspace-header p { margin: 0; opacity: 0.65; }
+.tool-local-badge { flex: none; color: var(--accent); font-size: 11px; }
+.tool-capabilities { margin: 8px 0; opacity: 0.6; font-size: 11px; }
+.tool-workspace-content { margin-top: 12px; }
+.tool-execution-status { margin-top: 10px; min-height: 18px; font-size: 11px; }
+.tools-hub-empty,
+.tools-hub-loading,
+.tools-hub-error { padding: 16px; opacity: 0.7; }
+.tools-hub-error { color: var(--red); opacity: 1; }
+
+@media (max-width: 760px) {
+  .tools-modal-content {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .tools-hub {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(120px, 34vh) minmax(260px, 1fr);
+  }
+  .tools-hub-search,
+  .tools-hub-filters,
+  .tools-hub-list,
+  .tools-hub-workspace { grid-column: 1; }
+  .tools-hub-workspace { grid-row: 4; }
+}

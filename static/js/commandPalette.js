@@ -43,6 +43,7 @@ const COMMANDS = [
   { id: 'open_research',  label: 'Research',              shortcut: '',             category: 'Tools' },
   { id: 'open_email',     label: 'Email',                 shortcut: '',             category: 'Tools' },
   { id: 'open_theme',     label: 'Theme',                 shortcut: '',             category: 'Tools' },
+  { id: 'open_tools',     label: 'Tools Hub',             shortcut: '',             category: 'Tools' },
   { id: 'open_settings',  label: 'Settings',              shortcut: 'Ctrl+,',       category: 'Tools' },
 ];
 

@@ -27,6 +27,7 @@ import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
 import adminModule from './js/admin.js';
 import settingsModule from './js/settings.js';
+import { initToolsHubUI } from './js/tools/modal.js';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
 import './js/modalManager.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
@@ -3414,6 +3415,7 @@ function startOdysseusApp() {
   }
 
   if (commandPaletteModule) commandPaletteModule.init();
+  initToolsHubUI();
   // Search buttons — icon rail + sidebar
   const railSearchBtn = el('rail-search-btn');
   if (railSearchBtn) {
@@ -3434,6 +3436,7 @@ function startOdysseusApp() {
     'rail-notes':     'tool-notes-btn',
     'rail-memory':    'tool-memory-btn',
     'rail-theme':     'tool-theme-btn',
+    'rail-tools':     'tool-tools-btn',
     'rail-email':     'email-section-title',
   };
   Object.entries(_railToolMap).forEach(([railId, toolId]) => {
