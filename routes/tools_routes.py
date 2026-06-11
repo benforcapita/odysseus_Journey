@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from core.database import SessionLocal, ToolRun
+from core.database import SessionLocal, ToolRun, Document, DocumentVersion
 from src.auth_helpers import get_current_user
 from src.tools_platform.history import (
     complete_run,
@@ -50,6 +51,10 @@ class CompleteRunRequest(BaseModel):
     output_metadata: Optional[dict] = None
     error: Optional[str] = None
     saved: bool = False
+
+
+class PersistArtifactRequest(BaseModel):
+    artifact: dict
 
 
 # ── registry endpoints ────────────────────────────────────────────────
@@ -136,6 +141,46 @@ def finish_run(run_id: str, body: CompleteRunRequest, request: Request, db=Depen
         "error": result.error,
         "saved": result.saved,
     }
+
+
+@router.post("/runs/{run_id}/persist")
+def persist_artifact(run_id: str, body: PersistArtifactRequest, request: Request, db=Depends(_get_db)):
+    """Persist a text artifact to the Library and mark the run as saved."""
+    owner = get_current_user(request) or "default"
+    run = db.get(ToolRun, run_id)
+    if run is None or run.owner != owner:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    artifact = body.artifact
+    doc_id = str(uuid.uuid4())
+    ver_id = str(uuid.uuid4())
+
+    doc = Document(
+        id=doc_id,
+        session_id=None,
+        title=artifact.get("name", "untitled"),
+        language="plaintext",
+        current_content=artifact.get("text", ""),
+        version_count=1,
+        is_active=True,
+        owner=owner,
+    )
+    db.add(doc)
+
+    ver = DocumentVersion(
+        id=ver_id,
+        document_id=doc_id,
+        version_number=1,
+        content=artifact.get("text", ""),
+        summary="Created by " + (run.tool_id or "tool"),
+        source="tool",
+    )
+    db.add(ver)
+
+    run.saved = True
+    db.commit()
+
+    return {"id": doc.id, "title": doc.title}
 
 
 @router.get("/{tool_id}")
