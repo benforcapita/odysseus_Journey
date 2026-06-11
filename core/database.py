@@ -643,6 +643,27 @@ class TaskRun(Base):
     )
 
 
+class ToolRun(TimestampMixin, Base):
+    """Per-user record of a tool execution. Stores settings, status, and
+    output metadata only — never raw input text, image bytes, or PDFs."""
+    __tablename__ = "tool_runs"
+
+    id = Column(String, primary_key=True, index=True)
+    tool_id = Column(String, nullable=False, index=True)
+    owner = Column(String, nullable=True, index=True)
+    operation = Column(String, nullable=True)
+    status = Column(String, default="running")
+    settings = Column(JSON, default=dict)
+    output_metadata = Column(JSON, nullable=True)
+    saved = Column(Boolean, default=False)
+    error = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_tool_runs_owner_tool", "owner", "tool_id"),
+        Index("ix_tool_runs_expiry", "saved", "created_at"),
+    )
+
+
 class Memory(Base):
     """
     SQLAlchemy model for Memory table.
