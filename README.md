@@ -26,6 +26,67 @@ A self-hosted AI workspace -- meant to be the self-hosted version of the UI expe
   - **Works on mobile** -- looks and runs great on your phone, not just desktop.<br>　<sub>responsive · installable (PWA) · touch gestures</sub>
   - **Extras** -- more to explore, happy if you give it a go!<br>　<sub>image editor · theme editor · file uploads (vision + PDF) · web search · presets · sessions · 2FA</sub>
 
+## Changes from upstream Odysseus
+
+This fork includes the following additions and changes on top of the original
+Odysseus project, current through **June 11, 2026**.
+
+### Native Tools Platform
+
+- Added a native, search-first **Tools Hub** accessible from the sidebar, icon
+  rail, and command palette, with category filters, keyboard navigation,
+  favorites, recents, and lazy-loaded tool workspaces.
+- Added a manifest-driven registry and `/api/tools` API for catalog discovery,
+  validation, search, owner-scoped run tracking, and artifact persistence.
+- Added a shared browser runtime with typed artifacts and explicit routing to
+  the existing Library and Gallery stores.
+- Tool inputs remain browser-local. Raw source text, images, and PDFs are not
+  stored in run history; unsaved run metadata expires after 24 hours.
+- Added **30 offline browser tools**:
+  - Data and conversion: JSON Formatter, JSON/CSV Converter, YAML/JSON
+    Converter, Number Base Converter, Unit Converter, Unix Timestamp Converter,
+    and Color Converter.
+  - Text and developer tools: Text Case Converter, Text Counter, Text Diff,
+    Text Sorter, Regex Tester, HTML Formatter, CSS Minifier, Markdown Preview,
+    Cron Expression Parser, and HTTP Status Codes.
+  - Encoding and security: Base64 Encoder, URL Encoder, Hash Generator, JWT
+    Decoder, Password Generator, and Structured PII Redactor.
+  - Generation and media: QR Code Generator, UUID Generator, Lorem Ipsum
+    Generator, Fake Data Generator, Image Resizer, SVG to PNG Converter, and
+    PDF Toolkit for merge and split operations.
+
+### Navigation and settings
+
+- Added an Obsidian-style command palette opened with `Ctrl+Shift+P` or
+  `Cmd+Shift+P`, including searchable app actions, tool launchers, and keyboard
+  navigation.
+- Reworked model settings into clearer Local, API, and Added Models areas;
+  simplified the local model type/URL controls and deferred the Teacher Model
+  settings card.
+- Fixed Cookbook serving so the selected server is respected.
+- Separated agent-tool administration onto `/api/agent-tools` so it no longer
+  conflicts with the Native Tools catalog API.
+
+### Codex, Claude, and agent integration
+
+- Added scoped Codex and Claude helpers for creating Odysseus document drafts,
+  including email drafts that remain documents until the user explicitly
+  confirms sending.
+- Added a `codex_documents` API-token profile and enforced combined document and
+  email scopes for email draft documents.
+- Fixed legacy textual or fenced email tool calls such as `list_emails` so they
+  use the same email MCP dispatch path as native function calls.
+
+### Deployment and maintenance
+
+- Added `docker-compose.prod.yml` and a hardened Caddy reverse-proxy setup with
+  automatic HTTPS, streaming-friendly proxying, health checks, persistent
+  service volumes, and configurable resource limits.
+- Expanded environment and PWA configuration for production deployments.
+- Added `scripts/sync-fork-with-upstream.sh` for clean, fast-forward-only fork
+  synchronization with tests guarding its workflow.
+- Updated the project license to **AGPL-3.0-or-later**.
+
 ## Demo
 A full, hover-to-play tour lives on the landing page (`docs/index.html`).
 
