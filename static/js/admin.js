@@ -1893,7 +1893,7 @@ async function loadBuiltinTools() {
   const list = el('adm-builtin-tools-list');
   if (!list) return;
   try {
-    const res = await fetch('/api/tools', { credentials: 'same-origin' });
+    const res = await fetch('/api/agent-tools', { credentials: 'same-origin' });
     const data = await res.json();
     const tools = data.tools || [];
     if (!tools.length) { list.innerHTML = '<div class="admin-empty">No tools found</div>'; return; }
@@ -1973,7 +1973,7 @@ async function loadBuiltinTools() {
       const allChecks = list.querySelectorAll('input[data-tool-id]');
       const disabled = [];
       allChecks.forEach(c => { if (!c.checked) disabled.push(c.dataset.toolId); });
-      await fetch('/api/tools', {
+      await fetch('/api/agent-tools', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ disabled }),

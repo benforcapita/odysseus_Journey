@@ -2693,7 +2693,7 @@ def setup_model_routes(model_discovery):
 
     # ── Tool management ──
 
-    @router.get("/tools")
+    @router.get("/agent-tools")
     def list_tools():
         """List all available tools with their enabled/disabled status."""
         from src.agent_tools import TOOL_TAGS
@@ -2707,7 +2707,7 @@ def setup_model_routes(model_discovery):
     class ToolsUpdate(BaseModel):
         disabled: list = []
 
-    @router.post("/tools")
+    @router.post("/agent-tools")
     def update_tools(body: ToolsUpdate, request: Request):
         """Update which tools are disabled."""
         require_admin(request)

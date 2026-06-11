@@ -72,6 +72,7 @@ export async function initToolsHub({ container, fetchImpl = fetch, onOpenTool })
     const resp = await fetchImpl('/api/tools');
     if (!resp.ok) throw new Error('Failed to load tools');
     tools = await resp.json();
+    if (!Array.isArray(tools)) throw new Error("Server returned an unexpected response format");
   }
 
   async function loadFavorites() {

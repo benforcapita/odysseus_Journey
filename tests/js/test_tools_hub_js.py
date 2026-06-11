@@ -44,6 +44,26 @@ _MOCK_TOOLS_JSON = json.dumps([
 ])
 
 
+def test_tools_hub_is_wired_into_the_application_shell():
+    """The Hub must have visible launchers and app-level initialization."""
+    with open(os.path.join(PROJECT_ROOT, "static", "index.html"), encoding="utf-8") as handle:
+        html = handle.read()
+    with open(os.path.join(PROJECT_ROOT, "static", "app.js"), encoding="utf-8") as handle:
+        app_js = handle.read()
+    with open(
+        os.path.join(PROJECT_ROOT, "static", "js", "commandPalette.js"),
+        encoding="utf-8",
+    ) as handle:
+        palette_js = handle.read()
+
+    assert 'id="tool-tools-btn"' in html
+    assert 'id="rail-tools"' in html
+    assert 'id="tools-modal"' in html
+    assert 'id="tools-hub-container"' in html
+    assert "initToolsHubUI" in app_js
+    assert "open_tools" in palette_js
+
+
 @pytest.mark.skipif(not _node_available(), reason="Node not available")
 def test_workspace_creates_shell():
     result = _run_js_module("""
