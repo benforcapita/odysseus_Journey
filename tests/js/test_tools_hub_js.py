@@ -161,6 +161,7 @@ def test_hub_initializes():
         };
 
         var container = document.createElement('div');
+        container.textContent = 'Loading tools...';
         var hub = await initToolsHub({
             container: container,
             fetchImpl: fakeFetch,
@@ -170,10 +171,16 @@ def test_hub_initializes():
         // Search for 'qr' — should not throw
         hub.search('qr');
 
-        process.stdout.write(JSON.stringify({ initialized: true }));
+        process.stdout.write(JSON.stringify({
+            initialized: true,
+            loadingTextCleared: container.textContent === '',
+            hasHubRoot: container.children.length > 0,
+        }));
     """
     result = _run_js_module(js_body)
     assert result["initialized"]
+    assert result["loadingTextCleared"]
+    assert result["hasHubRoot"]
 
 
 @pytest.mark.skipif(not _node_available(), reason="Node not available")
@@ -248,3 +255,103 @@ def test_hub_favorites_roundtrip():
     # The hub starts with json-formatter as favorite (from mock prefs response).
     # When it renders, it doesn't auto-toggle. We just verify it loaded without error.
     assert result["hasFavorites"] is not None
+
+@pytest.mark.skipif(not _node_available(), reason="Node not available")
+def test_tools_hub_modal_wires_drag_and_snap():
+    """The Tools Hub modal must reuse the shared window drag/snap system."""
+    js_body = """
+        var dragCalls = [];
+        function makeDraggableSpy(modal, options) {
+            dragCalls.push({
+                modalId: modal && modal.id,
+                contentClass: options.content && options.content.className,
+                headerClass: options.header && options.header.className,
+                fsClass: options.fsClass,
+            });
+        }
+
+        function makeEl(tag, className, id) {
+            var el = {
+                tagName: tag,
+                id: id || '',
+                className: className || '',
+                classList: {
+                    add: function(c) { el.className = (el.className + ' ' + c).trim(); },
+                    remove: function(c) { el.className = el.className.split(' ').filter(function(x) { return x !== c; }).join(' '); },
+                    contains: function(c) { return el.className.split(' ').indexOf(c) >= 0; },
+                },
+                setAttribute: function() {},
+                getAttribute: function() { return ''; },
+                style: {},
+                _text: '',
+                get textContent() { return this._text; },
+                set textContent(v) { this._text = v; },
+                _inner: '',
+                get innerHTML() { return this._inner; },
+                set innerHTML(v) { this._inner = v; this.children = []; },
+                children: [],
+                appendChild: function(child) { this.children.push(child); return child; },
+                addEventListener: function() {},
+                querySelector: function(sel) {
+                    if (sel === '.modal-content') return contentEl;
+                    if (sel === '.modal-header') return headerEl;
+                    if (sel === 'input[type="search"]') return null;
+                    return null;
+                },
+            };
+            return el;
+        }
+
+        var modalEl = makeEl('div', 'modal hidden', 'tools-modal');
+        var contentEl = makeEl('div', 'modal-content tools-modal-content');
+        var headerEl = makeEl('div', 'modal-header');
+        var containerEl = makeEl('div', 'tools-modal-body', 'tools-hub-container');
+        var closeBtn = makeEl('button', 'close-btn', 'close-tools-modal');
+        var launcher1 = makeEl('button', '', 'tool-tools-btn');
+        var launcher2 = makeEl('button', '', 'rail-tools');
+
+        modalEl.appendChild(contentEl);
+        contentEl.appendChild(headerEl);
+        contentEl.appendChild(containerEl);
+
+        var byId = {
+            'tools-modal': modalEl,
+            'tools-hub-container': containerEl,
+            'close-tools-modal': closeBtn,
+            'tool-tools-btn': launcher1,
+            'rail-tools': launcher2,
+        };
+
+        globalThis.document = {
+            getElementById: function(id) { return byId[id] || null; },
+            createElement: function(tag) { return makeEl(tag); },
+            addEventListener: function() {},
+            body: undefined,
+        };
+        globalThis.window = { addEventListener: function() {}, innerWidth: 1024, innerHeight: 768 };
+        globalThis.MutationObserver = function() { this.observe = function() {}; this.disconnect = function() {}; };
+        globalThis.requestAnimationFrame = function(cb) { return setTimeout(cb, 0); };
+        globalThis.cancelAnimationFrame = function(id) { clearTimeout(id); };
+
+        import { initToolsHubUI } from './static/js/tools/modal.js';
+
+        var ui = initToolsHubUI({
+            hubInit: async function(opts) {
+                opts.container.textContent = '';
+                opts.container.appendChild(makeEl('div', 'tools-hub'));
+                return { search: function() {} };
+            },
+            makeWindowDraggableImpl: makeDraggableSpy,
+        });
+
+        await ui.open();
+
+        process.stdout.write(JSON.stringify({ dragCalls: dragCalls }));
+    """
+    result = _run_js_module(js_body)
+    assert len(result["dragCalls"]) == 1
+    call = result["dragCalls"][0]
+    assert call["modalId"] == "tools-modal"
+    assert "tools-modal-content" in call["contentClass"]
+    assert "modal-header" in call["headerClass"]
+    assert call["fsClass"] == "tools-modal-fullscreen"

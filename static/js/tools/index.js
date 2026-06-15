@@ -6,6 +6,7 @@
  */
 
 import { createWorkspace, setExecutionStatus } from './workspace.js';
+import { getToolIconSvg, STAR_OUTLINE, STAR_FILLED } from './icons.js';
 
 /**
  * @typedef {object} ToolEntry
@@ -153,7 +154,7 @@ export async function initToolsHub({ container, fetchImpl = fetch, onOpenTool })
 
       const icon = document.createElement('span');
       icon.className = 'tools-hub-card-icon';
-      icon.textContent = tool.icon || '🔧';
+      icon.innerHTML = getToolIconSvg(tool.icon);
       card.appendChild(icon);
 
       const info = document.createElement('div');
@@ -176,7 +177,7 @@ export async function initToolsHub({ container, fetchImpl = fetch, onOpenTool })
       favBtn.className = `tools-hub-fav-btn ${favorites.has(tool.id) ? 'is-favorite' : ''}`;
       favBtn.setAttribute('aria-pressed', favorites.has(tool.id) ? 'true' : 'false');
       favBtn.setAttribute('aria-label', favorites.has(tool.id) ? `Remove ${tool.name} from favorites` : `Add ${tool.name} to favorites`);
-      favBtn.textContent = favorites.has(tool.id) ? '★' : '☆';
+      favBtn.innerHTML = favorites.has(tool.id) ? STAR_FILLED : STAR_OUTLINE;
       favBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleFavorite(tool.id, favBtn);
@@ -276,12 +277,12 @@ export async function initToolsHub({ container, fetchImpl = fetch, onOpenTool })
   async function toggleFavorite(toolId, favBtn) {
     if (favorites.has(toolId)) {
       favorites.delete(toolId);
-      favBtn.textContent = '☆';
+      favBtn.innerHTML = STAR_OUTLINE;
       favBtn.classList.remove('is-favorite');
       favBtn.setAttribute('aria-pressed', 'false');
     } else {
       favorites.add(toolId);
-      favBtn.textContent = '★';
+      favBtn.innerHTML = STAR_FILLED;
       favBtn.classList.add('is-favorite');
       favBtn.setAttribute('aria-pressed', 'true');
     }
@@ -310,6 +311,7 @@ export async function initToolsHub({ container, fetchImpl = fetch, onOpenTool })
   await Promise.all([loadTools(), loadFavorites(), loadRecents()]);
   renderCategories();
   renderToolList(getFilteredTools(''));
+  container.textContent = '';
   container.appendChild(root);
 
   return {
