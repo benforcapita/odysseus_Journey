@@ -111,5 +111,10 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 7000
 
+# Lightweight health check on the existing /api/health endpoint.
+# Uses 127.0.0.1 so it works before any external auth middleware.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:7000/api/health >/dev/null || exit 1
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"]
