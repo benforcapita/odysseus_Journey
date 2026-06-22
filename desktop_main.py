@@ -96,7 +96,6 @@ def _start_server_thread() -> threading.Thread:
 
 
 _LOADING_HTML = """<!doctype html><html><head><meta charset='utf-8'>
-<meta http-equiv='refresh' content='2'>
 <title>Odysseus</title>
 <style>
 html,body{margin:0;height:100%;background:#1a1c23;color:#d1d4e0;
@@ -142,7 +141,7 @@ def main() -> None:
 
     import webview
     window = webview.create_window(
-        "Odysseus", _LOADING_HTML, width=980, height=640,
+        "Odysseus", html=_LOADING_HTML, width=980, height=640,
         min_size=(900, 600), text_select=False,
     )
 

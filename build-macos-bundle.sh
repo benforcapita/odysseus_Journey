@@ -60,10 +60,9 @@ mkdir -p "$BUILD"
 # source-icon change propagates on the next build.
 PWA_ICON="$REPO_DIR/static/icon-512.png"
 rm -f "$ICON"
-# Build a proper multi-resolution .icns via an .iconset + iconutil. Direct
-# `sips -s format icns` is unreliable across macOS versions; iconutil is the
-# canonical, always-works path. Source is the PWA's 512x512 icon (matches the
-# installed-PWA icon), upscaled to 1024 for the @2x slots.
+# Build a proper multi-resolution .icns via an .iconset + iconutil. If
+# iconutil rejects the set, direct sips conversion is still better than
+# shipping PyInstaller's default Python icon.
 SRC_ICON=""
 if [ -f "$PWA_ICON" ]; then
   SRC_ICON="$PWA_ICON"
@@ -88,10 +87,12 @@ if [ -n "$SRC_ICON" ] && command -v iconutil >/dev/null 2>&1 && command -v sips 
   sips -z 512 512   "$SRC_ICON" --out "$ICONSET/icon_256x256@2x.png"  >/dev/null 2>&1
   sips -z 512 512   "$SRC_ICON" --out "$ICONSET/icon_512x512.png"      >/dev/null 2>&1
   sips -z 1024 1024 "$SRC_ICON" --out "$ICONSET/icon_512x512@2x.png"   >/dev/null 2>&1
-  iconutil -c icns "$ICONSET" -o "$ICON" >/dev/null 2>&1 || echo "  (iconutil failed — continuing without icon)"
+  iconutil -c icns "$ICONSET" -o "$ICON" >/dev/null 2>&1 || \
+    sips -s format icns "$SRC_ICON" --out "$ICON" >/dev/null 2>&1 || \
+    echo "  (icon conversion failed)"
   rm -rf "$(dirname "$ICONSET")"
 else
-  echo "  (icon tools unavailable — continuing without icon)"
+  echo "  (icon tools unavailable)"
 fi
 
 # ── 3. Pre-flight: app imports cleanly. ──
@@ -107,6 +108,21 @@ rm -rf "$DIST/Odysseus.app" "$DIST/Odysseus" "$BUILD/Odysseus"
 if [ ! -d "$DIST/Odysseus.app" ]; then
   echo "✗ Build failed — dist/Odysseus.app not produced"
   exit 1
+fi
+
+# PyInstaller can leave the onedir payload next to the .app. A downloadable
+# app must carry that payload inside Contents/MacOS so dragging only the .app
+# to /Applications still works.
+if [ -d "$DIST/Odysseus/_internal" ]; then
+  if [ -f "$DIST/Odysseus.app/Contents/Resources/static/index.html" ]; then
+    echo "▶ Removing redundant PyInstaller sidecar payload"
+    rm -rf "$DIST/Odysseus"
+  else
+    echo "▶ Folding PyInstaller payload into Odysseus.app"
+    rm -rf "$DIST/Odysseus.app/Contents/MacOS/_internal"
+    cp -R "$DIST/Odysseus/." "$DIST/Odysseus.app/Contents/MacOS/"
+    rm -rf "$DIST/Odysseus"
+  fi
 fi
 
 # ── 5. Ad-hoc sign (local-only; Gatekeeper one-time right-click-open). ──
@@ -125,7 +141,7 @@ if command -v hdiutil >/dev/null 2>&1; then
   cp -R "$DIST/Odysseus.app" "$STAGE/"
   ln -s /Applications "$STAGE/Applications"
   rm -f "$DIST/Odysseus.dmg"
-  hdiutil create -volname "Odysseus" -srcfolder "$STAGE" -ov -format UDZO "$DIST/Odysseus.dmg" >/dev/null
+  hdiutil create -volname "Odysseus" -srcfolder "$STAGE" -ov -format UDZO "$DIST/Odysseus.dmg" >/dev/null || echo "  (hdiutil failed — continuing without DMG)"
   rm -rf "$STAGE"
 fi
 

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -118,7 +119,19 @@ def test_tls_overrides_does_not_weaken_global_tls():
         )
 
 
-def test_llm_verify_default_is_true_when_env_unset():
+def test_llm_verify_uses_truststore_when_available(monkeypatch):
+    """Use OS-native trust when truststore is installed."""
+    os.environ.pop("LLM_CA_BUNDLE", None)
+    import importlib
+    import truststore
+
+    import src.tls_overrides as mod
+    importlib.reload(mod)
+    verify = mod.llm_verify()
+    assert isinstance(verify, truststore.SSLContext)
+
+
+def test_llm_verify_default_is_true_when_no_system_store(monkeypatch):
     """When LLM_CA_BUNDLE is unset, llm_verify() must return True so httpx
     falls through to its built-in trust store. This is the safe default —
     operators have to opt in to get any change at all."""
@@ -127,6 +140,8 @@ def test_llm_verify_default_is_true_when_env_unset():
 
     import src.tls_overrides as mod
     importlib.reload(mod)
+    monkeypatch.setitem(sys.modules, "truststore", None)
+    monkeypatch.setattr(mod, "_MACOS_CA_BUNDLES", ())
     assert mod.llm_verify() is True, (
         f"Default llm_verify() must be True (httpx built-in trust store); "
         f"got {mod.llm_verify()!r}. An accidental non-True default would "
@@ -134,7 +149,7 @@ def test_llm_verify_default_is_true_when_env_unset():
     )
 
 
-def test_llm_verify_falls_back_to_true_for_missing_bundle_file():
+def test_llm_verify_falls_back_to_true_for_missing_bundle_file(monkeypatch):
     """Pointing LLM_CA_BUNDLE at a non-existent path must NOT raise and
     must fall back to verify=True (system trust). A misconfigured env var
     on a deploy box should never produce a silently TLS-disabled process."""
@@ -144,6 +159,29 @@ def test_llm_verify_falls_back_to_true_for_missing_bundle_file():
 
         import src.tls_overrides as mod
         importlib.reload(mod)
+        monkeypatch.setitem(sys.modules, "truststore", None)
+        monkeypatch.setattr(mod, "_MACOS_CA_BUNDLES", ())
         assert mod.llm_verify() is True
     finally:
         os.environ.pop("LLM_CA_BUNDLE", None)
+
+
+def test_llm_verify_uses_macos_system_bundle_when_available(monkeypatch):
+    """macOS users may have local/network roots in the system bundle that
+    certifi does not include. Prefer that bundle when present."""
+    os.environ.pop("LLM_CA_BUNDLE", None)
+    marker = "/tmp/macos-cert.pem"
+
+    import importlib
+
+    import src.tls_overrides as mod
+    monkeypatch.setattr(mod.os.path, "isfile", lambda path: path == marker)
+    monkeypatch.setattr(mod, "_MACOS_CA_BUNDLES", (marker,))
+    importlib.reload(mod)
+    try:
+        monkeypatch.setitem(sys.modules, "truststore", None)
+        monkeypatch.setattr(mod.os.path, "isfile", lambda path: path == marker)
+        monkeypatch.setattr(mod, "_MACOS_CA_BUNDLES", (marker,))
+        assert mod.llm_verify() == marker
+    finally:
+        importlib.reload(mod)
