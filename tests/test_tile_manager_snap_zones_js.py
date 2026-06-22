@@ -69,6 +69,13 @@ def _run_tile_case():
           memoryBottom: pick(mod._zoneForContentForTests(memoryContent, 500, 790)),
           settingsTop: pick(mod._zoneForContentForTests(settingsContent, 500, 20)),
           settingsRight: pick(mod._zoneForContentForTests(settingsContent, 1190, 300)),
+          zoneLeft: pick(mod.zoneForName && mod.zoneForName('left-half')),
+          zoneRight: pick(mod.zoneForName && mod.zoneForName('right-half')),
+          zoneTop: pick(mod.zoneForName && mod.zoneForName('top-half')),
+          zoneBottom: pick(mod.zoneForName && mod.zoneForName('bottom-half')),
+          zoneMaximize: pick(mod.zoneForName && mod.zoneForName('maximize')),
+          zoneFullscreen: pick(mod.zoneForName && mod.zoneForName('fullscreen')),
+          zoneUnknown: mod.zoneForName ? mod.zoneForName('nope') : 'no-export',
         }}));
         """
     )
@@ -115,3 +122,31 @@ def test_regular_tool_modals_are_not_limited_to_fullscreen_only():
     assert zones["memoryBottom"]["name"] == "bottom-half"
     assert zones["settingsTop"] is None
     assert zones["settingsRight"]["name"] == "right-half"
+
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_zone_for_name_returns_each_zone_with_current_geometry():
+    zones = _run_tile_case()
+
+    # zoneForName must reproduce _zoneForPointer's geometry so the command
+    # palette drives the same half-snaps a drag would commit.
+    assert zones["zoneLeft"] == {
+        "name": "left-half",
+        "rect": {"left": 4, "top": 4, "width": 596, "height": 792},
+    }
+    assert zones["zoneRight"] == {
+        "name": "right-half",
+        "rect": {"left": 600, "top": 4, "width": 596, "height": 792},
+    }
+    assert zones["zoneTop"] == {
+        "name": "top-half",
+        "rect": {"left": 4, "top": 4, "width": 1192, "height": 396},
+    }
+    assert zones["zoneBottom"] == {
+        "name": "bottom-half",
+        "rect": {"left": 4, "top": 400, "width": 1192, "height": 396},
+    }
+    assert zones["zoneMaximize"]["name"] == "maximize"
+    assert zones["zoneFullscreen"]["name"] == "fullscreen"
+    # Unknown names return null (not a thrown error) so palette dispatch is safe.
+    assert zones["zoneUnknown"] is None

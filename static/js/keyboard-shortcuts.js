@@ -3,6 +3,10 @@
 // ============================================
 
 import { IS_MAC, isAltGrEvent } from './platform.js';
+import * as modalManager from './modalManager.js';
+import * as tileManager from './tileManager.js';
+import * as modalSnap from './modalSnap.js';
+import * as toolWindowZOrder from './toolWindowZOrder.js';
 
 const _defaultKeybinds = {
   search: 'ctrl+k', toggle_sidebar: 'ctrl+alt+b', new_session: 'ctrl+alt+n',
@@ -10,6 +14,12 @@ const _defaultKeybinds = {
   cancel: 'escape', tts: 'alt+shift+t',
   incognito: 'ctrl+alt+i', settings: 'ctrl+,', focus_input: 'ctrl+/',
   command_palette: 'ctrl+shift+p',
+  // Global window-management actions (per-window snap/close/minimize are
+  // palette-only — no keybind to avoid collisions). Unbound by default;
+  // users can bind them in Settings → Shortcuts.
+  win_close_all: 'ctrl+alt+shift+w', win_min_all: 'ctrl+alt+shift+m',
+  win_restore_all: 'ctrl+alt+shift+r',
+  win_cycle_next: 'ctrl+alt+shift+j', win_cycle_prev: 'ctrl+alt+shift+k',
   // Open-tool shortcuts (Calendar bound by default; rest unbound).
   open_calendar: 'ctrl+alt+c', open_compare: '', open_cookbook: '',
   open_research: '', open_gallery: '', open_library: '', open_memory: '',
@@ -67,6 +77,10 @@ export function initKeyboardShortcuts(modules) {
 
   // ── Command palette action dispatcher ──────────────────────────────────
   const _dispatchCommandPalette = (actionId) => {
+    // Window-management actions (win:* ids) are generated dynamically and
+    // dispatched by the helpers below — short-circuit before tool-button
+    // handling so the ids never collide with static tool ids.
+    if (_dispatchWindow(actionId)) return;
     const toolBtns = {
       open_calendar: 'tool-calendar-btn',
       open_compare:  'tool-compare-btn',
@@ -238,6 +252,11 @@ export function initKeyboardShortcuts(modules) {
     'compare-model-overlay':  'tool-compare-btn',
     'calendar-modal':         'tool-calendar-btn',
     'email-lib-modal':        'email-section-title',
+    // No sidebar/rail trigger button, but listing them here lets the
+    // command palette surface per-window actions for these too. The close
+    // path falls through to the modal's own close button.
+    'ge-shortcuts-modal':     '',
+    'custom-preset-modal':    '',
   };
   let _lastWindow = 'settings-modal';
 
@@ -270,6 +289,215 @@ export function initKeyboardShortcuts(modules) {
       else if (settingsModule) settingsModule.open();
     }
   };
+
+  // ── Window management for the command palette ─────────────────────────
+  // Per-window actions are generated dynamically from whichever tool
+  // windows are currently open (visible or minimized-to-dock). A command
+  // for a closed window is never shown — and would be a no-op if it were.
+
+  // "Sides" are the persistent edge docks (chat reflows around the window);
+  // top/bottom/maximize/fullscreen are floating tile-snaps. Every tool
+  // window wires makeWindowDraggable with enableDock + enableLeftDock, so
+  // both dock sides are always offered. Tile-snaps keep tileManager's
+  // per-window layout guards: settings crushes on anything but a dock, and
+  // cookbook/theme only tolerate true fullscreen.
+  const _DOCK_SIDES = ['left', 'right'];
+  const _TILE_ZONES_ALLOWED = {
+    'settings-modal':  [],
+    'cookbook-modal':  ['fullscreen'],
+    'theme-modal':     ['fullscreen'],
+  };
+  const _DEFAULT_TILE_ZONES = ['top-half', 'bottom-half', 'maximize', 'fullscreen'];
+  const _TILE_VERB = {
+    'top-half':    'Snap to top half',
+    'bottom-half': 'Snap to bottom half',
+    'maximize':    'Maximize',
+    'fullscreen':  'Fill fullscreen',
+  };
+
+  const _isSnappedOrDocked = (modal) => {
+    if (!modal) return false;
+    if (modal.classList.contains('modal-left-docked') || modal.classList.contains('modal-right-docked')) return true;
+    const content = modal.querySelector('.modal-content, .research-pane');
+    return !!(content && content.dataset && content.dataset._tileZone);
+  };
+
+  // Walk every known tool window and return its current open state.
+  const _openWindows = () => {
+    const out = [];
+    for (const id in _WINDOW_TRIGGERS) {
+      const modal = document.getElementById(id);
+      if (!modal) continue;
+      const visible = _windowVisible(id);
+      const minimized = modalManager.isMinimized(id);
+      if (!visible && !minimized) continue; // closed → no commands
+      out.push({
+        id, modal, visible, minimized,
+        label: modalManager.labelFor(id),
+        snapped: _isSnappedOrDocked(modal),
+      });
+    }
+    return out;
+  };
+
+  const _tileLabel = (zone, label) => {
+    if (zone === 'maximize')   return 'Maximize ' + label;
+    if (zone === 'fullscreen') return 'Fill ' + label + ' fullscreen';
+    const verb = _TILE_VERB[zone] || zone;
+    // "Snap to top half" → "Snap <Window> to top half"
+    return verb.replace('Snap to', 'Snap ' + label + ' to');
+  };
+
+  // Build the dynamic command list the palette merges into its results.
+  const _buildWindowCommands = () => {
+    const kb = window._odysseusKeybinds || _defaultKeybinds;
+    const wins = _openWindows();
+    const cmds = [];
+
+    // Global actions first (kept gated so they don't show when nothing's open)
+    const visibleWins = wins.filter(w => w.visible && !w.minimized);
+    const minWins     = wins.filter(w => w.minimized);
+    if (wins.length)            cmds.push({ id: 'win:close_all',   label: 'Close all windows',              category: 'Window', shortcut: kb.win_close_all   || '' });
+    if (visibleWins.length)     cmds.push({ id: 'win:min_all',     label: 'Minimize all windows to dock',   category: 'Window', shortcut: kb.win_min_all     || '' });
+    if (minWins.length)         cmds.push({ id: 'win:restore_all', label: 'Restore all minimized windows',  category: 'Window', shortcut: kb.win_restore_all || '' });
+    if (visibleWins.length > 1) {
+      cmds.push({ id: 'win:cycle_next', label: 'Cycle to next window',     category: 'Window', shortcut: kb.win_cycle_next || '' });
+      cmds.push({ id: 'win:cycle_prev', label: 'Cycle to previous window', category: 'Window', shortcut: kb.win_cycle_prev || '' });
+    }
+
+    // Per-window actions — only for windows that are actually open.
+    for (const w of wins) {
+      if (w.minimized) {
+        // A minimized window can only be restored or fully closed.
+        cmds.push({ id: 'win:restore:' + w.id, label: 'Restore ' + w.label, category: 'Window' });
+        cmds.push({ id: 'win:close:'   + w.id, label: 'Close '   + w.label, category: 'Window' });
+        continue;
+      }
+      cmds.push({ id: 'win:close:' + w.id, label: 'Close '   + w.label,              category: 'Window' });
+      cmds.push({ id: 'win:min:'   + w.id, label: 'Minimize ' + w.label + ' to dock', category: 'Window' });
+      // Sides → persistent edge dock (chat reflows around the window).
+      for (const side of _DOCK_SIDES) {
+        cmds.push({ id: 'win:dock:' + side + ':' + w.id, label: 'Dock ' + w.label + ' to ' + side, category: 'Window' });
+      }
+      // Top/bottom/maximize/fullscreen → floating tile-snap, gated per window.
+      const tileZones = _TILE_ZONES_ALLOWED[w.id] || _DEFAULT_TILE_ZONES;
+      for (const zone of tileZones) {
+        cmds.push({ id: 'win:snap:' + zone + ':' + w.id, label: _tileLabel(zone, w.label), category: 'Window' });
+      }
+      if (w.snapped) {
+        cmds.push({ id: 'win:unsnap:' + w.id, label: 'Undock ' + w.label, category: 'Window' });
+      }
+    }
+    return cmds;
+  };
+
+  // Close a single window whether or not it's been registered with
+  // modalManager (auto-register only happens on minimize, so a freshly-
+  // opened visible tool usually isn't registered yet).
+  const _closeWindow = (id) => {
+    if (modalManager.isRegistered(id)) {
+      try { modalManager.close(id); return; } catch (e) { /* fall through */ }
+    }
+    const m = document.getElementById(id);
+    if (m) {
+      const closeBtn = m.querySelector('.close-btn, .modal-close, [data-close]');
+      if (closeBtn) { closeBtn.click(); return; }
+    }
+    const trig = el(_WINDOW_TRIGGERS[id]);
+    if (trig) trig.click();
+    else if (id === 'settings-modal' && settingsModule) settingsModule.close();
+  };
+
+  const _closeAllWindows = () => {
+    for (const w of _openWindows()) _closeWindow(w.id);
+  };
+  const _minimizeAllWindows = () => {
+    for (const w of _openWindows()) {
+      if (w.visible && !w.minimized) { try { modalManager.minimize(w.id); } catch (e) {} }
+    }
+  };
+  const _restoreAllWindows = () => {
+    for (const w of _openWindows()) {
+      if (w.minimized) { try { modalManager.restore(w.id); } catch (e) {} }
+    }
+  };
+
+  // Rotate focus through the open window stack by z-index. "next" brings
+  // the second-from-top to the front (top drops one); "prev" brings the
+  // bottommost to the front. For two windows both bring the other up.
+  const _cycleWindow = (dir) => {
+    const wins = _openWindows().filter(w => w.visible && !w.minimized && w.modal);
+    if (wins.length < 2) return;
+    const zOf = (m) => parseInt(getComputedStyle(m).zIndex || '0', 10) || 0;
+    wins.sort((a, b) => zOf(a.modal) - zOf(b.modal));
+    const target = (dir === 'next') ? wins[wins.length - 2] : wins[0];
+    if (!target) return;
+    const newZ = toolWindowZOrder.nextToolWindowZ({ current: String(zOf(target.modal)) });
+    target.modal.style.zIndex = String(newZ);
+    const f = target.modal.querySelector('[tabindex], button, input, textarea, select');
+    if (f) { try { f.focus({ preventScroll: true }); } catch (e) {} }
+    else if (uiModule && uiModule.showToast) {
+      uiModule.showToast(target.label + ' brought to front');
+    }
+  };
+
+  // Dispatch a `win:*` action id. Returns true if handled.
+  const _dispatchWindow = (actionId) => {
+    if (!actionId || actionId.indexOf('win:') !== 0) return false;
+    const parts = actionId.split(':');
+    const kind = parts[1];
+    switch (kind) {
+      case 'close_all':    _closeAllWindows();    return true;
+      case 'min_all':      _minimizeAllWindows(); return true;
+      case 'restore_all':  _restoreAllWindows();  return true;
+      case 'cycle_next':   _cycleWindow('next');  return true;
+      case 'cycle_prev':   _cycleWindow('prev');  return true;
+      case 'dock': {
+        // win:dock:<side>:<id> — persistent edge dock. Clear any active
+        // tile-snap first so applyEdgeDock snapshots the floating rect,
+        // not the tiled one.
+        const side = parts[2];
+        const dockId = parts[3];
+        const m = document.getElementById(dockId);
+        if (m) {
+          const content = m.querySelector('.modal-content, .research-pane') || m;
+          try { tileManager.unsnap(content); } catch (e) {}
+          try { modalSnap.applyEdgeDock(m, side); } catch (e) {}
+        }
+        return true;
+      }
+      case 'snap': {
+        const zone = parts[2];
+        const snapId = parts[3];
+        const m = document.getElementById(snapId);
+        if (m) {
+          const z = tileManager.zoneForName(zone);
+          if (z) { try { tileManager.snapModalToZone(m, z); } catch (e) {} }
+        }
+        return true;
+      }
+      case 'close':   _closeWindow(parts[2]);                          return true;
+      case 'min':     try { modalManager.minimize(parts[2]); } catch (e) {} return true;
+      case 'restore': try { modalManager.restore(parts[2]); } catch (e) {} return true;
+      case 'unsnap': {
+        const m = document.getElementById(parts[2]);
+        if (m) {
+          const content = m.querySelector('.modal-content, .research-pane') || m;
+          try { tileManager.unsnap(content); } catch (e) {}
+          if (m.classList.contains('modal-left-docked') || m.classList.contains('modal-right-docked')) {
+            try { modalSnap.clearRightDock(m); } catch (e) {}
+          }
+        }
+        return true;
+      }
+      default: return false;
+    }
+  };
+
+  // Register the dynamic command provider so the palette surfaces these.
+  if (commandPaletteModule && commandPaletteModule.setDynamicCommands) {
+    commandPaletteModule.setDynamicCommands(_buildWindowCommands);
+  }
 
   document.addEventListener('keydown', (e) => {
     const kb = window._odysseusKeybinds;
@@ -388,6 +616,33 @@ export function initKeyboardShortcuts(modules) {
     if (_matchesCombo(e, kb.settings)) {
       e.preventDefault();
       _toggleActiveWindow();
+      return;
+    }
+    // Global window-management keybinds. Per-window snap/close/minimize are
+    // palette-only; these five operate on the whole open-window stack.
+    if (_matchesCombo(e, kb.win_close_all)) {
+      e.preventDefault();
+      _closeAllWindows();
+      return;
+    }
+    if (_matchesCombo(e, kb.win_min_all)) {
+      e.preventDefault();
+      _minimizeAllWindows();
+      return;
+    }
+    if (_matchesCombo(e, kb.win_restore_all)) {
+      e.preventDefault();
+      _restoreAllWindows();
+      return;
+    }
+    if (_matchesCombo(e, kb.win_cycle_next)) {
+      e.preventDefault();
+      _cycleWindow('next');
+      return;
+    }
+    if (_matchesCombo(e, kb.win_cycle_prev)) {
+      e.preventDefault();
+      _cycleWindow('prev');
       return;
     }
     // Open-tool shortcuts — click the sidebar tool button so each tool's

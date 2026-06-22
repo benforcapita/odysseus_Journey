@@ -50,7 +50,7 @@ ADMIN_PRIVILEGES["block_all_models"] = False
 
 from src.constants import AUTH_FILE, PASSWORD_MIN_LENGTH
 DEFAULT_AUTH_PATH = AUTH_FILE
-TOKEN_TTL = 60 * 60 * 24 * 7  # 7 days
+TOKEN_TTL = int(os.getenv("ODYSSEUS_SESSION_TTL", str(60 * 60 * 24 * 7)))  # default 7 days; override per-deployment (Mac app uses 90d via env)
 
 # Usernames the auth + middleware layer reserve as internal "synthetic owner"
 # sentinels; they must never belong to a real account. The most dangerous is

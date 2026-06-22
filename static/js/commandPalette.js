@@ -8,13 +8,14 @@ import { IS_MAC } from './platform.js';
 const PALETTE_ID = 'cmd-palette-overlay';
 const INPUT_ID = 'cmd-palette-input';
 const RESULTS_ID = 'cmd-palette-results';
-const MAX_VISIBLE = 24;
+const MAX_VISIBLE = 40;
 
 let _selectedIdx = 0;
 let _items = [];
 let _filtered = [];
 let _visible = false;
 let _onSelect = null;  // external callback: (actionId) => void
+let _dynamicProvider = null;  // () => Command[] — runtime commands (e.g. per-window actions)
 
 // ── Command registry ─────────────────────────────────────────────────────
 
@@ -46,6 +47,20 @@ const COMMANDS = [
   { id: 'open_tools',     label: 'Tools Hub',             shortcut: '',             category: 'Tools' },
   { id: 'open_settings',  label: 'Settings',              shortcut: 'Ctrl+,',       category: 'Tools' },
 ];
+
+// ── Dynamic commands ─────────────────────────────────────────────────────
+// Other modules (e.g. keyboard-shortcuts.js) can register a provider that
+// returns extra commands at palette-open / keystroke time. Used for the
+// per-window actions, which depend on which tool windows are currently
+// open and thus can't live in a static table.
+export function setDynamicCommands(provider) {
+  _dynamicProvider = (typeof provider === 'function') ? provider : null;
+}
+
+function _allCommands() {
+  const extra = _dynamicProvider ? _dynamicProvider() : [];
+  return extra && extra.length ? COMMANDS.concat(extra) : COMMANDS;
+}
 
 // ── Format shortcut for display ──────────────────────────────────────────
 function _fmtShortcut(raw) {
@@ -107,9 +122,10 @@ function _score(item, query) {
 }
 
 function _filter(query) {
-  if (!query.trim()) return COMMANDS.slice(0, MAX_VISIBLE);
+  const all = _allCommands();
+  if (!query.trim()) return all.slice(0, MAX_VISIBLE);
   const q = query.trim();
-  return COMMANDS
+  return all
     .map(c => ({ cmd: c, score: _score(c, q) }))
     .filter(x => x.score > 0)
     .sort((a, b) => b.score - a.score)
@@ -165,7 +181,7 @@ export function open(onSelect) {
   const overlay = _ensureOverlay();
   overlay.classList.remove('hidden');
   _visible = true;
-  _items = COMMANDS.slice();
+  _items = _allCommands();
   _selectedIdx = 0;
 
   const inp = _el(INPUT_ID);
@@ -263,5 +279,5 @@ export function init() {
   }
 }
 
-const commandPaletteModule = { init, open, close, isOpen };
+const commandPaletteModule = { init, open, close, isOpen, setDynamicCommands };
 export default commandPaletteModule;

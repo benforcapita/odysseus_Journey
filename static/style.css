@@ -23466,6 +23466,13 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
 .sort-dropdown-item:hover {
   background: color-mix(in srgb, var(--accent) 10%, transparent) !important;
 }
+/* Selected option in a sort/rearrange submenu: nudge the row right with a
+   small leading space so active items read as shifted-aside from the rest.
+   Driven by the `.selected` class toggled in app.js (_syncSortChecks and
+   syncRearrangeChecks). Keeps the right-side check bullet where it is. */
+.sort-dropdown-item.selected {
+  padding-left: 14px !important;
+}
 .sort-dropdown-sep {
   border-top: 1px solid var(--border);
   margin-top: 2px;

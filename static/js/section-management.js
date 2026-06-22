@@ -105,7 +105,7 @@ export function initSectionCollapse(Storage) {
     // Click anywhere on collapsed section to expand
     section.addEventListener('click', (e) => {
       if (!section.classList.contains('collapsed')) return;
-      if (e.target.closest('button, select, .dropdown')) return;
+      if (e.target.closest('button, select, .dropdown, .drag-handle')) return;
       e.stopPropagation();
       toggleCollapse();
     });
@@ -121,6 +121,39 @@ export function initSectionDrag(Storage, loadUIVis) {
   const sidebar = document.getElementById('sidebar');
   const sidebarInner = sidebar ? sidebar.querySelector('.sidebar-inner') : null;
   if (!sidebarInner) return;
+
+  // Ensure every sidebar section carries a `draggable` attribute so the
+  // existing UI-visibility machinery (app.js applyUIVis) can flip it on/off
+  // when "Rearrange" is toggled in the Chats/Models sort dropdowns. Without
+  // this, `.section[draggable]` queries return empty and the toggle silently
+  // does nothing. Start at "false"; applyUIVis will set "true" if the user
+  // previously enabled rearrange mode.
+  sidebar.querySelectorAll('.section').forEach(section => {
+    if (!section.hasAttribute('draggable')) section.setAttribute('draggable', 'false');
+    // Inject a grab handle at the start of the section header. CSS keeps it
+    // hidden by default and only reveals it under `body.rearrange-mode` —
+    // the handle is the grab target onMouseDown looks for (`drag-handle`),
+    // and it was the missing piece that made the whole feature inert.
+    const header = section.querySelector('.section-header-flex');
+    if (header && !header.querySelector('.drag-handle')) {
+      const handle = document.createElement('span');
+      handle.className = 'drag-handle';
+      handle.title = 'Drag to reorder';
+      handle.setAttribute('aria-hidden', 'true');
+      // Vertical-ellipsis grip, matching .item-drag-handle / .folder-drag-handle.
+      handle.textContent = '\u22EE\u22EE';
+      header.insertBefore(handle, header.firstChild);
+    }
+  });
+
+  // Re-run applyUIVis so the freshly-attributed sections pick up the saved
+  // rearrange preference (the first pass at app init ran before these
+  // attributes existed and silently skipped them).
+  try {
+    if (typeof window.applyUIVis === 'function' && typeof window.loadUIVis === 'function') {
+      window.applyUIVis(window.loadUIVis());
+    }
+  } catch (_) { /* non-fatal — default state is draggable=false */ }
 
   // Disable draggable on mobile to prevent scroll interference
   if ('ontouchstart' in window) {

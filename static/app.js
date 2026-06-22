@@ -1228,6 +1228,9 @@ function initializeEventListeners() {
         check.style.cssText = 'float:right;font-size:20px;line-height:1;position:relative;top:1px;color:var(--accent, var(--red));opacity:' + (o.dataset.sort === current ? '1' : '0');
         check.textContent = '\u2022';
         if (!o.querySelector('.sort-check')) o.appendChild(check);
+        // Mark selected rows so CSS can indent them a touch (the small
+        // leading space the user asked for — selected options shift right).
+        o.classList.toggle('selected', !!(current && o.dataset.sort === current));
       });
       // Highlight filter icon when a sort is active
       if (sortBtn) sortBtn.classList.toggle('active', !!current);
@@ -2465,6 +2468,11 @@ function initializeEventListeners() {
     const on = loadUIVis()['section-drag-reorder'] === true;
     document.querySelectorAll('.rearrange-toggle .rearrange-check').forEach(ch => {
       ch.style.opacity = on ? '1' : '0';
+    });
+    // Mark the rearrange toggle row as selected when active so the same
+    // leading-space treatment applies as the sort options above.
+    document.querySelectorAll('.rearrange-toggle').forEach(t => {
+      t.classList.toggle('selected', on);
     });
   }
   document.querySelectorAll('.rearrange-toggle').forEach(toggle => {

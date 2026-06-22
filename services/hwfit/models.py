@@ -1,5 +1,6 @@
 import json
 import os
+from src.runtime_paths import get_app_root
 import re
 
 QUANT_HIERARCHY = ["Q8_0", "Q6_K", "Q5_K_M", "Q4_K_M", "Q3_K_M", "Q2_K"]
@@ -255,7 +256,7 @@ _models_cache = None
 def get_models():
     global _models_cache
     if _models_cache is None:
-        data_path = os.path.join(os.path.dirname(__file__), "data", "hf_models.json")
+        data_path = os.path.join(get_app_root(), "services", "hwfit", "data", "hf_models.json")
         try:
             with open(data_path, encoding="utf-8") as f:
                 _models_cache = [_normalize_model_entry(m) for m in json.load(f)]
@@ -265,4 +266,4 @@ def get_models():
 
 
 def model_catalog_path():
-    return os.path.join(os.path.dirname(__file__), "data", "hf_models.json")
+    return os.path.join(get_app_root(), "services", "hwfit", "data", "hf_models.json")
