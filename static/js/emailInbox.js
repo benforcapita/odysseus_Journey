@@ -267,7 +267,7 @@ function _bindEvents() {
   if (header) {
     header.style.cursor = 'pointer';
     header.addEventListener('click', (e) => {
-      if (e.target.closest('#email-compose-btn')) return;
+      if (e.target.closest('#email-compose-btn, .drag-handle')) return;
       openEmailLibrary();
       markInboxAsSeen();
     });

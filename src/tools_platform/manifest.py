@@ -8,6 +8,8 @@ from typing import Any, Dict, List
 
 from pydantic import BaseModel, ValidationError
 
+from src.runtime_paths import get_app_root
+
 # ── Capability allowlist ──────────────────────────────────────────────
 ALLOWED_CAPABILITIES = frozenset({
     "file-read",
@@ -109,7 +111,10 @@ class ToolRegistry:
     @classmethod
     def load_default(cls) -> "ToolRegistry":
         """Load manifests from the bundled catalog directory."""
-        manifests_dir = Path(__file__).resolve().parent / "manifests"
+        # Frozen-aware: in a PyInstaller bundle, __file__ points into the
+        # PYZ archive (not a real path), so resolve via the app-root helper.
+        # The build spec bundles manifests to <app_root>/src/tools_platform/manifests.
+        manifests_dir = Path(get_app_root()) / "src" / "tools_platform" / "manifests"
         return cls.load(manifests_dir)
 
     def list_tools(self) -> List[ToolManifest]:

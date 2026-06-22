@@ -1557,4 +1557,12 @@ document.addEventListener('click', (e) => {
   }
 }, true);
 
-export default { register, unregister, isRegistered, isMinimized, minimize, restore, toggle, close, injectMinimizeButton };
+// Read-only accessor for the built-in dock-chip label of a registered or
+// auto-wired window. Used by the command palette to label per-window
+// actions without duplicating the _LABELS table. Falls back to the id.
+export function labelFor(id) {
+  const l = _LABELS[id];
+  return l && l.label ? l.label : id;
+}
+
+export default { register, unregister, isRegistered, isMinimized, minimize, restore, toggle, close, injectMinimizeButton, labelFor };

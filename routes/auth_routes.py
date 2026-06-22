@@ -163,7 +163,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             path="/",
         )
         if body.remember:
-            cookie_kwargs["max_age"] = TOKEN_TTL
+            cookie_kwargs["max_age"] = TOKEN_TTL  # matches server-side session TTL
         response.set_cookie(**cookie_kwargs)
         return {"ok": True, "username": username}
 

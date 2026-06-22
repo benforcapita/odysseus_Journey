@@ -391,4 +391,41 @@ export function snapModalToZone(modal, zone) {
   _applySnap(content, zone.rect, zone.name);
 }
 
+// Build a snap zone by name using the current viewport geometry, so the
+// command palette / keyboard shortcuts can drive a half-snap without a
+// drag session. Names match _zoneForPointer: 'left-half', 'right-half',
+// 'top-half', 'bottom-half', 'maximize', 'fullscreen'. Returns null for
+// unknown names. Mirrors _zoneForPointer's math (kept in one place).
+export function zoneForName(name) {
+  if (!name) return null;
+  const safe = _viewportSafeRect();
+  const W = safe.right - safe.left;
+  const H = safe.bottom - safe.top;
+  switch (name) {
+    case 'fullscreen':
+      return { name, rect: { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight } };
+    case 'maximize':
+      return { name, rect: { left: safe.left, top: safe.top, width: W, height: H } };
+    case 'top-half':
+      return { name, rect: { left: safe.left, top: safe.top, width: W, height: H / 2 } };
+    case 'left-half':
+      return { name, rect: { left: safe.left, top: safe.top, width: W / 2, height: H } };
+    case 'right-half':
+      return { name, rect: { left: safe.left + W / 2, top: safe.top, width: W / 2, height: H } };
+    case 'bottom-half':
+      return { name, rect: { left: safe.left, top: safe.top + H / 2, width: W, height: H / 2 } };
+    default:
+      return null;
+  }
+}
+
+// Release a tile-snap applied by _applySnap / snapModalToZone, restoring
+// the pre-snap geometry stored on the content element. Safe to call when
+// the window isn't snapped (no-op). Exported so the command palette can
+// offer a "Release snap" action without a drag.
+export function unsnap(content) {
+  if (!content) return;
+  _unsnap(content);
+}
+
 export {};

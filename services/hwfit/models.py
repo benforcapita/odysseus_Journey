@@ -1,5 +1,6 @@
 import json
 import os
+from src.runtime_paths import get_app_root
 import re
 
 QUANT_HIERARCHY = ["Q8_0", "Q6_K", "Q5_K_M", "Q4_K_M", "Q3_K_M", "Q2_K"]
@@ -300,8 +301,8 @@ def refresh_dynamic_catalogs(force=False):
 def get_models():
     global _models_cache
     if _models_cache is None:
-        data_path = os.path.join(os.path.dirname(__file__), "data", "hf_models.json")
-        static_mlx_path = os.path.join(os.path.dirname(__file__), "data", "mlx_community_models.json")
+        data_path = os.path.join(get_app_root(), "services", "hwfit", "data", "hf_models.json")
+        static_mlx_path = os.path.join(get_app_root(), "services", "hwfit", "data", "mlx_community_models.json")
         try:
             from services.hwfit.hf_discovery import (
                 load_cached_hf_collection_models,
@@ -340,4 +341,4 @@ def get_models():
 
 
 def model_catalog_path():
-    return os.path.join(os.path.dirname(__file__), "data", "hf_models.json")
+    return os.path.join(get_app_root(), "services", "hwfit", "data", "hf_models.json")

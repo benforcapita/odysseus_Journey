@@ -74,7 +74,7 @@ from core.middleware import (
     path_is_route_or_child,
     with_asgi_root_path,
 )
-from core.auth import AuthManager, normalize_known_username
+from core.auth import AuthManager, normalize_known_username, TOKEN_TTL
 from core.exceptions import (
     SessionNotFoundError, InvalidFileUploadError,
     LLMServiceError, WebSearchError,
@@ -468,7 +468,21 @@ if AUTH_ENABLED:
 
             # --- Cookie-based session auth ---
             token = request.cookies.get(SESSION_COOKIE)
-            if not auth_manager.validate_token(token):
+            valid = auth_manager.validate_token(token)
+            _restore_cookie = False
+            # Desktop app session restore (loopback only): the macOS .app loads
+            # the UI with ?desktop_token=<session-token> so the session cookie is
+            # re-established on every app launch even if the WKWebView cookie
+            # store didn't persist across relaunches. Restricted to trusted
+            # loopback clients (no proxy/tunnel headers) — the token never leaves
+            # the machine and is validated exactly like a cookie-present token.
+            if not valid:
+                _dt = request.query_params.get("desktop_token", "")
+                if _dt and _is_trusted_loopback(request) and auth_manager.validate_token(_dt):
+                    token = _dt
+                    valid = True
+                    _restore_cookie = True
+            if not valid:
                 if path.startswith("/api/"):
                     return JSONResponse(status_code=401, content={"error": "Not authenticated"})
                 return RedirectResponse(
@@ -479,7 +493,17 @@ if AUTH_ENABLED:
             # Attach current username to request state for downstream routes
             request.state.current_user = auth_manager.get_username_for_token(token)
             request.state.api_token = False
-            return await call_next(request)
+            response = await call_next(request)
+            if _restore_cookie:
+                # Re-issue the session cookie so the WKWebView store and all
+                # subsequent same-origin requests carry it fresh.
+                response.set_cookie(
+                    key=SESSION_COOKIE, value=token, path="/",
+                    httponly=True, samesite="lax",
+                    secure=os.getenv("SECURE_COOKIES", "false").lower() == "true",
+                    max_age=TOKEN_TTL,
+                )
+            return response
 
     app.add_middleware(AuthMiddleware)
     logger.info("Auth middleware enabled (AUTH_ENABLED=true)")
