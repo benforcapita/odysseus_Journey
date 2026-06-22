@@ -39,12 +39,17 @@ Scope:
 import logging
 import os
 import ssl
+import sys
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 _extra_bundle_path: Optional[str] = (os.environ.get("LLM_CA_BUNDLE") or "").strip() or None
+_MACOS_CA_BUNDLES = (
+    "/etc/ssl/cert.pem",
+    "/opt/homebrew/etc/ca-certificates/cert.pem",
+)
 
 
 def _build_ssl_context() -> Optional[ssl.SSLContext]:
@@ -83,9 +88,27 @@ def _build_ssl_context() -> Optional[ssl.SSLContext]:
 _SHARED_SSL_CONTEXT: Optional[ssl.SSLContext] = _build_ssl_context()
 
 
+def _default_verify():
+    try:
+        import truststore
+        return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except Exception:
+        pass
+    for path in _MACOS_CA_BUNDLES:
+        if os.path.isfile(path):
+            return path
+    if getattr(sys, "frozen", False):
+        try:
+            import certifi
+            return certifi.where()
+        except Exception as e:
+            logger.warning("Could not load certifi CA bundle in frozen app: %s", e)
+    return True
+
+
 def llm_verify():
     """Return the value to pass as `verify=` on httpx.get / httpx.Client /
     httpx.AsyncClient. Returns the extended-trust SSLContext when
     LLM_CA_BUNDLE is set and loaded; otherwise True (httpx default — system
     / certifi bundle, verification fully on)."""
-    return _SHARED_SSL_CONTEXT if _SHARED_SSL_CONTEXT is not None else True
+    return _SHARED_SSL_CONTEXT if _SHARED_SSL_CONTEXT is not None else _default_verify()

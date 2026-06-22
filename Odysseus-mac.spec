@@ -92,10 +92,12 @@ hiddenimports += [
 # --- Package data / binaries ---
 datas = []
 datas += collect_data_files("chromadb")
+datas += collect_data_files("certifi")
 datas += collect_data_files("fastembed")
 datas += collect_data_files("onnxruntime")
 datas += collect_data_files("huggingface_hub")
 datas += collect_data_files("tokenizers", include_py_files=False)
+datas += collect_data_files("truststore")
 datas += collect_data_files("nh3")
 datas += collect_data_files("markdown_it_py", include_py_files=False)
 datas += collect_dynamic_libs("onnxruntime")
