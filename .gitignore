@@ -97,6 +97,7 @@ dev-docs/
 # Windows-port working docs (local only, not for public repo)
 docs/windows-port/
 /docs/superpowers/
+.worktrees/
 
 # Local config
 compound.config.json
