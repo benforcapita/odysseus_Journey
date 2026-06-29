@@ -280,6 +280,52 @@ class ChatMessage(Base):
         Index('ix_messages_session_time', 'session_id', 'timestamp'),  # Composite for efficient message retrieval
     )
 
+
+class Project(TimestampMixin, Base):
+    """Folder-scoped agent workspace owned by one Odysseus user."""
+    __tablename__ = "projects"
+
+    id = Column(String, primary_key=True, index=True)
+    owner = Column(String, nullable=True, index=True)
+    name = Column(String, nullable=False)
+    folder_path = Column(String, nullable=False)
+    linked_paths = Column(JSON, default=list, nullable=False)
+    model = Column(String, nullable=True, default="")
+    endpoint_url = Column(String, nullable=True, default="")
+    endpoint_id = Column(String, nullable=True, default="")
+    headers = Column(JSON, default=dict)
+    auto_approve = Column(Boolean, default=False, nullable=False)
+    last_opened_at = Column(DateTime, nullable=True, default=None)
+    archived = Column(Boolean, default=False, nullable=False)
+
+    messages = relationship("ProjectMessage", back_populates="project", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_projects_owner_archived_opened", "owner", "archived", "last_opened_at"),
+        Index("ix_projects_owner_name", "owner", "name"),
+    )
+
+
+class ProjectMessage(Base):
+    """Persisted project conversation message with scrubbed operation metadata."""
+    __tablename__ = "project_messages"
+
+    id = Column(String, primary_key=True, index=True)
+    project_id = Column(String, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner = Column(String, nullable=True, index=True)
+    role = Column(String, nullable=False)
+    content = Column(Text, nullable=False, default="")
+    meta_data = Column("metadata", JSON, default=dict)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
+
+    project = relationship("Project", back_populates="messages")
+
+    __table_args__ = (
+        Index("ix_project_messages_project_time", "project_id", "created_at"),
+        Index("ix_project_messages_owner_project", "owner", "project_id"),
+    )
+
+
 class Document(TimestampMixin, Base):
     """Living document that the AI can create and edit in-place."""
     __tablename__ = "documents"
@@ -930,6 +976,15 @@ def _migrate_add_last_message_at_column():
             conn.close()
         except Exception:
             pass
+
+
+def _migrate_add_projects_tables():
+    """Create Projects persistence tables on existing installs."""
+    try:
+        Base.metadata.create_all(bind=engine, tables=[Project.__table__, ProjectMessage.__table__])
+    except Exception as e:
+        logger.warning("Projects table migration failed: %s", e)
+
 
 def _migrate_add_document_archived_column():
     """Add `archived` to documents (soft-archive flag). Guarded + idempotent."""
@@ -2121,6 +2176,7 @@ def init_db():
                     "Could not restrict %s to 0o600; it may expose DB pages.",
                     sidecar,
                 )
+    _migrate_add_projects_tables()
     _migrate_add_hidden_models_column()
     _migrate_add_cached_models_column()
     _migrate_add_pinned_models_column()

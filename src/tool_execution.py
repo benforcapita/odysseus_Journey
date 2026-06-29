@@ -10,6 +10,7 @@ Extracted from agent_tools.py.
 import asyncio
 import collections
 import contextvars
+import dataclasses
 import json
 import logging
 import os
@@ -292,6 +293,58 @@ def agent_cwd() -> str:
     return get_active_workspace() or _AGENT_WORKDIR
 
 
+@dataclasses.dataclass
+class ProjectPolicy:
+    """Per-project execution policy threaded through the tool dispatcher.
+
+    Carries the sandbox root, linked paths, and approval mode so filesystem
+    and shell tools can be routed through project_sandbox.resolve_and_check
+    and the pending-approval flow. Enforcement is added in a later task;
+    for now the parameter is threaded without changing behavior.
+    """
+    project_id: str
+    owner: Optional[str]
+    project_root: str
+    linked_paths: list
+    auto_approve: bool = False
+    # Set by the approve route so an explicitly-approved operation runs once
+    # instead of re-entering the pending-approval gate (non-static shells too).
+    bypass_pending: bool = False
+
+
+# Tools the project agent may use inside its sandbox. When a project_policy
+# is active these are authorized by the sandbox + approval flow rather than
+# by admin status, so the public-user blocklist is bypassed for them.
+PROJECT_SCOPED_TOOLS = {
+    "read_file", "write_file", "edit_file", "bash", "python",
+    "grep", "glob", "ls", "get_workspace",
+}
+
+
+def _project_mutating_tool(tool: str) -> bool:
+    return tool in {"write_file", "edit_file", "bash", "python"}
+
+
+def _project_pending_result(project_policy, tool, content, reason: str = "") -> dict:
+    """Build a pending-approval tool result and register it for user action."""
+    from src.project_approval import create_pending
+    operation = {
+        "tool": tool,
+        "content": content,
+        "summary": f"{tool}: {content.split(chr(10))[0][:120]}",
+        "command": content if tool in {"bash", "python"} else "",
+        "reason": reason,
+    }
+    pending = create_pending(project_policy.project_id, project_policy.owner, operation)
+    return {
+        "pending": True,
+        "pending_id": pending["pending_id"],
+        "operation": operation,
+        "output": f"Pending approval for {operation['summary']}",
+        "exit_code": 0,
+    }
+
+
 def get_mcp_manager():
     from src import agent_tools
     return agent_tools.get_mcp_manager()
@@ -463,11 +516,12 @@ async def _call_mcp_tool(
     tool: str,
     content: str,
     progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None,
+    project_policy: Optional["ProjectPolicy"] = None,
 ) -> Dict:
     """Route a legacy tool call through the MCP manager, with direct fallbacks."""
     mcp = get_mcp_manager()
     if not mcp:
-        return await _direct_fallback(tool, content, progress_cb=progress_cb) or {"error": f"MCP manager not available for tool '{tool}'", "exit_code": 1}
+        return await _direct_fallback(tool, content, progress_cb=progress_cb, project_policy=project_policy) or {"error": f"MCP manager not available for tool '{tool}'", "exit_code": 1}
 
     server_id, tool_name = _MCP_TOOL_MAP[tool]
     qualified = f"mcp__{server_id}__{tool_name}"
@@ -476,7 +530,7 @@ async def _call_mcp_tool(
 
     # If MCP server not connected, try direct fallback
     if isinstance(result, dict) and result.get("exit_code") == 1 and "not connected" in result.get("error", ""):
-        fallback = await _direct_fallback(tool, content, progress_cb=progress_cb)
+        fallback = await _direct_fallback(tool, content, progress_cb=progress_cb, project_policy=project_policy)
         if fallback:
             return fallback
 
@@ -536,6 +590,7 @@ async def _direct_fallback(
     progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None,
     session_id: Optional[str] = None,
     owner: Optional[str] = None,
+    project_policy: Optional["ProjectPolicy"] = None,
 ) -> Optional[Dict]:
     _subproc_env = {
         **os.environ,
@@ -544,6 +599,16 @@ async def _direct_fallback(
         "LINES": "40",
         "HOME": _AGENT_WORKDIR,
     }
+    if project_policy:
+        # Project shell tools get a per-project HOME under the sandbox root
+        # so tools like git find config there, not the user's real ~/.gitconfig.
+        home = os.path.join(project_policy.project_root, ".odysseus-home")
+        try:
+            os.makedirs(home, exist_ok=True)
+        except OSError:
+            pass
+        _subproc_env = dict(_subproc_env)
+        _subproc_env["HOME"] = home
 
     try:
         ctx = {
@@ -551,6 +616,7 @@ async def _direct_fallback(
             "subproc_env": _subproc_env,
             "session_id": session_id,
             "owner": owner,
+            "project_policy": project_policy,
         }
 
         from src.agent_tools import TOOL_HANDLERS
@@ -604,6 +670,7 @@ async def execute_tool_block(
         | _MissingToolSecurityContext
     ) = _MISSING_TOOL_SECURITY_CONTEXT,
     exact_approval: Optional[ExactToolApproval] = None,
+    project_policy: Optional[ProjectPolicy] = None,
 ) -> Tuple[str, Dict]:
     """Execute a single tool block. Returns (description, result_dict).
 
@@ -709,7 +776,10 @@ async def execute_tool_block(
                 decision.reason or "Tool blocked by external-context policy.",
             )
 
-    token = _active_workspace.set(workspace or None)
+    effective_workspace = workspace or (
+        project_policy.project_root if project_policy else None
+    )
+    token = _active_workspace.set(effective_workspace or None)
     try:
         output = await _execute_tool_block_impl(
             block,
@@ -733,6 +803,7 @@ async def execute_tool_block(
                 if approval_claimed
                 else None
             ),
+            project_policy=project_policy,
         )
         if isinstance(security_context, ToolRunSecurityContext):
             security_context.observe_tool_result(
@@ -755,6 +826,7 @@ async def _execute_tool_block_impl(
     approved_document_id: Optional[str] = None,
     approved_document_version: Optional[int] = None,
     approved_document_digest: Optional[str] = None,
+    project_policy: Optional[ProjectPolicy] = None,
 ) -> Tuple[str, Dict]:
     """Execute a single tool block. Returns (description, result_dict).
 
@@ -850,7 +922,11 @@ async def _execute_tool_block_impl(
         logger.warning("Admin tool blocked for non-admin owner=%r tool=%s", owner, tool)
         return desc, result
 
-    if is_public_blocked_tool(tool) and not _owner_is_admin(owner):
+    if (
+        is_public_blocked_tool(tool)
+        and not _owner_is_admin(owner)
+        and not (project_policy and tool in PROJECT_SCOPED_TOOLS)
+    ):
         desc = f"{tool}: BLOCKED"
         result = {
             "error": (
@@ -861,6 +937,22 @@ async def _execute_tool_block_impl(
         }
         logger.warning("Public tool policy blocked owner=%r tool=%s", owner, tool)
         return desc, result
+
+    # Project policy: mutating operations route through the pending-approval
+    # flow instead of executing directly. Non-static shell commands always
+    # require approval even when auto_approve is on. Read-only tools
+    # (read_file, grep, glob, ls) are confined by the active workspace and
+    # run without approval.
+    if project_policy and _project_mutating_tool(tool) and not project_policy.bypass_pending:
+        if tool in {"bash", "python"}:
+            from src.project_approval import classify_shell_command
+            cls = classify_shell_command(content)
+            if not cls.static:
+                desc = f"{tool}: pending approval"
+                return desc, _project_pending_result(project_policy, tool, content, cls.reason)
+        if not project_policy.auto_approve:
+            desc = f"{tool}: pending approval"
+            return desc, _project_pending_result(project_policy, tool, content)
 
 
     # Background execution: a `bash` block whose first line is the `#!bg`
@@ -896,7 +988,7 @@ async def _execute_tool_block_impl(
     if tool in _MCP_TOOL_MAP:
         first_line = content.split(chr(10))[0][:80]
         desc = f"{tool}: {first_line}"
-        result = await _call_mcp_tool(tool, content, progress_cb=progress_cb)
+        result = await _call_mcp_tool(tool, content, progress_cb=progress_cb, project_policy=project_policy)
     elif tool in ("grep", "glob", "ls", "get_workspace"):
         # Code-navigation tools — no MCP server; run the direct implementation.
         first_line = content.split(chr(10))[0][:80]

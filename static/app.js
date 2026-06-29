@@ -36,6 +36,7 @@ import notesModule from './js/notes.js';
 import adminModule from './js/admin.js?v=20260716openrouter3';
 import settingsModule from './js/settings.js?v=20260815approvalsave1';
 import { initToolsHubUI } from './js/tools/modal.js';
+import { initProjectsUI } from './js/projects.js';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
 import './js/modalManager.js?v=20260723compareicon2';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
@@ -3746,6 +3747,7 @@ function startOdysseusApp() {
 
   if (commandPaletteModule) commandPaletteModule.init();
   initToolsHubUI();
+  initProjectsUI();
   // Search buttons — icon rail + sidebar
   const railSearchBtn = el('rail-search-btn');
   if (railSearchBtn) {

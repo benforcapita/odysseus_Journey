@@ -79,3 +79,41 @@ These are open, acknowledged, and contributor help is welcome:
 3. **`src/search/` partial consolidation.** `src.search.core` and `src.search.providers` correctly alias `services.search` via `sys.modules` replacement. `analytics`, `cache`, `content`, `query`, and `ranking` are still independent copies that can drift. The SSRF regression tests in `tests/test_webhook_ssrf_resilience.py` test `src.webhook_manager` directly (separate from search), so the safety net there is intact. See #1058.
 
 4. **Token scopes are coarse.** There is no way to grant a session a subset of the owning user's privileges. Companion/mobile tokens carry either `chat` or `admin` scope with no per-capability granularity.
+
+## Projects Workspace Agent
+
+Projects is macOS desktop-only and binds the built-in Odysseus agent to a
+user-selected folder. File paths are resolved with `realpath` before access,
+and the agent can reach only the project folder plus user-linked paths.
+Linked paths are user-created (never agent-created) and can be read-only or
+read/write.
+
+Mutating file operations and shell commands require approval by default.
+Non-static shell commands (`eval`, backticks, `$(...)`, `source`, here-docs
+with command substitution, etc.) always require approval, even when
+auto-approve is on — the one case where the user always sees the command.
+Shell commands run in the project folder with a project-local `HOME`
+(`<root>/.odysseus-home`) so tools like `git` find config there, not the user's
+real `~/.gitconfig`. Pending approvals are in-memory with a 10-minute TTL; a
+server restart drops all pendings and a reconnecting client sees the run as
+stopped.
+
+`ProjectMessage.metadata` stores only the operation record — paths, sizes,
+unified diffs, approval decisions, statuses, and `pending_id`. It never stores
+raw file snapshots or raw tool inputs/outputs (`src.projects.scrub_project_metadata`
+enforces this allowlist before persistence).
+
+Known v1 gaps:
+
+1. **No shell network-egress sandbox.** v1 does not block outbound network from
+   shell commands. A malicious project can still contain scripts the user
+   approves the agent to run. Future v2 may add an egress toggle.
+2. **MCP-vs-direct confinement.** The project sandbox (`active_workspace`,
+   project-local `HOME`, pending-approval gate) is enforced on the direct
+   tool-handler path used when no MCP server is connected (the desktop default
+   for non-admin owners). When an admin or single-user owner runs a project
+   with MCP servers connected, `read_file`/`write_file`/`bash` are routed
+   through the MCP servers, which do not read the `active_workspace` contextvar
+   or the project `HOME`. The pending-approval gate still applies, but the
+   per-project HOME/path confinement only holds on the direct path. Pin the
+   direct path for project runs in a later task to close this gap.

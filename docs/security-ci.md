@@ -17,8 +17,6 @@ automatically; you do not start them.
 | **Workflow security** (actionlint + zizmor) | A broken or insecure automation file that could leak the repo's access token | Yes |
 | **Dependency review** | A pull request that adds a software library with a known security hole | Yes |
 | **pip-audit** | Known security holes in the Python libraries already used | No (advisory) |
-| **Container scan: hadolint** | Mistakes and insecure patterns in the `Dockerfile` | Yes |
-| **Container scan: Trivy** | Known security holes in the Docker image | No (advisory) |
 | **CodeQL** | Real bugs in the app's own code: injection, auth mistakes, path traversal | No (advisory) |
 
 "Blocks a merge" means a red X appears on the pull request and, once you enable
@@ -44,9 +42,9 @@ libraries, not something a given pull request introduced.
 - **Dependency review failed**: the pull request adds a library with a known
   vulnerability. Ask the contributor to use a patched version, or decline the
   change.
-- **hadolint / workflow security failed**: the contributor changed the
-  `Dockerfile` or an automation file in a way the linter rejects. Ask them to
-  address the message shown in the failed check.
+- **Workflow security failed**: the contributor changed an automation file in a
+  way the linter rejects. Ask them to address the message shown in the failed
+  check.
 
 ## One-time settings to turn on
 
@@ -69,7 +67,6 @@ This makes the **Merge** button refuse to work until the gating checks pass.
    - `gitleaks`
    - `actionlint`
    - `zizmor (Actions SAST)`
-   - `hadolint (Dockerfile lint)`
    - `dependency-review (PR gate)`
 
    The first two come from the correctness CI (`ci.yml`); the rest are this
@@ -96,6 +93,6 @@ let the workflows run on one pull request first, then add them here.
 ## Keeping it current
 
 `.github/dependabot.yml` opens small weekly pull requests to update Python and
-npm packages, the Docker base image, and the pinned automation actions
-themselves. Review and merge those like any other pull request; they keep the
-project patched without manual tracking.
+npm packages plus the pinned automation actions themselves. Review and merge
+those like any other pull request; they keep the project patched without manual
+tracking.

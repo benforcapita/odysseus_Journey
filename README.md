@@ -156,15 +156,13 @@ M-series Mac, run Odysseus natively:
 ```bash
 git clone https://github.com/pewdiepie-archdaemon/odysseus.git
 cd odysseus
-./start-macos.sh
+./build-macos-app.sh
+open dist/Odysseus.app
 ```
 
-It launches at `http://127.0.0.1:7860`. To expose it to your phone over a trusted LAN/VPN such as Tailscale, bind all interfaces:
+The Mac app starts Odysseus locally and opens the native wrapper. For terminal development on macOS, use `./start-macos.sh`.
 
-```bash
-ODYSSEUS_HOST=0.0.0.0 ./start-macos.sh
-# then open http://<tailscale-ip>:7860
-```
+Mac app notes, native development, HTTPS, and configuration live in the [setup guide](docs/setup.md).
 
 The script also reads `.env` at startup, so `APP_BIND=0.0.0.0` and `APP_PORT`
 set there are picked up automatically without a command-line override each run.

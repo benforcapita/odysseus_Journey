@@ -1028,7 +1028,7 @@ function _renderHwVisibilityWarning(sys) {
   });
 
   box.querySelector('[data-hw-action="copy"]')?.addEventListener('click', () => {
-    // Keep diagnostics copy/paste friendly for GitHub issues and Docker support.
+    // Keep diagnostics copy/paste friendly for GitHub issues.
     const text = [
       'Odysseus Cookbook hardware diagnostics',
       `probe_scope=${sys?.probe_scope || ''}`,
@@ -1043,9 +1043,9 @@ function _renderHwVisibilityWarning(sys) {
       `cpu_name=${sys?.cpu_name || ''}`,
       '',
       'Useful checks:',
-      'docker compose exec odysseus nvidia-smi -L',
-      'docker compose exec odysseus cat /proc/meminfo | head',
-      'docker compose exec odysseus python -c "from services.hwfit.hardware import detect_system; import json; print(json.dumps(detect_system(fresh=True), indent=2))"',
+      'nvidia-smi -L',
+      'sysctl -n hw.memsize',
+      'python -c "from services.hwfit.hardware import detect_system; import json; print(json.dumps(detect_system(fresh=True), indent=2))"',
     ].join('\n');
 
     _copyText(text);

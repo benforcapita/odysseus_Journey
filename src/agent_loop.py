@@ -58,6 +58,8 @@ from src.agent_tools import (
     strip_tool_blocks,
     execute_tool_block,
     format_tool_result,
+    ProjectPolicy,
+    PROJECT_SCOPED_TOOLS,
     set_active_document,
     set_active_model,
     function_call_to_tool_block,
@@ -3432,6 +3434,7 @@ async def stream_agent_loop(
     approved_plan: Optional[str] = None,
     tool_policy: Optional[ToolPolicy] = None,
     workspace: Optional[str] = None,
+    project_policy: Optional[ProjectPolicy] = None,
     forced_tools: Optional[Set[str]] = None,
     uploaded_files: Optional[List[Dict]] = None,
     workload: str = "foreground",
@@ -3474,6 +3477,19 @@ async def stream_agent_loop(
     requested_endpoint_cost_tracked = requested_route.get("endpoint_cost_tracked")
     if not isinstance(requested_endpoint_cost_tracked, bool):
         requested_endpoint_cost_tracked = None
+    if project_policy:
+        # Projects authorize file/shell tools via the sandbox +
+        # approval flow, not admin status, so keep their schemas
+        # available to the model and unblock them at dispatch.
+        messages.insert(0, {
+            "role": "system",
+            "content": (
+                "Project workspace mode is active. Use file and shell "
+                f"tools only inside {project_policy.project_root}. Ask the "
+                "user to link outside paths instead of trying to bypass "
+                "the sandbox. Mutating operations may require approval."
+            ),
+        })
     if tool_policy:
         disabled_tools.update(tool_policy.all_disabled_names())
         if tool_policy.disable_mcp:
@@ -3485,6 +3501,11 @@ async def stream_agent_loop(
         # MCP tools are namespaced dynamically, so hide all MCP schemas for
         # public/non-admin users rather than trying to enumerate every tool.
         mcp_mgr = None
+    if project_policy:
+        # Re-enable the project-scoped file/shell/code-nav tools that the
+        # public-user blocklist disabled above; the project sandbox +
+        # approval flow is their authorization, not admin status.
+        disabled_tools.difference_update(PROJECT_SCOPED_TOOLS)
 
     if plan_mode:
         # Plan mode: investigate read-only, propose a plan, don't execute. The
@@ -5768,6 +5789,7 @@ async def stream_agent_loop(
                             progress_cb=_push_progress,
                             workspace=workspace,
                             security_context=run_security,
+                            project_policy=project_policy,
                         )
                     finally:
                         # Sentinel so the drainer knows to stop.

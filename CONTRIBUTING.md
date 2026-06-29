@@ -22,13 +22,13 @@ End-users cloning the repo will land on `dev` by default. To run the curated/sta
 
 ## Setup
 
-Docker is the recommended path for normal testing:
+The Mac app is the recommended path for normal local use:
 
 ```bash
 git clone https://github.com/odysseus-dev/odysseus.git
 cd odysseus
-cp .env.example .env
-docker compose up -d --build
+./build-macos-app.sh
+open dist/Odysseus.app
 ```
 
 Manual development uses Python 3.11+:
@@ -40,7 +40,7 @@ pip install -r requirements.txt
 python -m uvicorn app:app --host 127.0.0.1 --port 7000
 ```
 
-Windows is not actively tested. Docker on Linux or a Linux/macOS manual install is the safer path for now.
+Windows is not actively tested. The macOS app and Linux/macOS manual install are the safer paths for now.
 
 ## Running Checks
 
@@ -50,14 +50,6 @@ Run the smallest relevant checks for your change:
 python -m pytest
 python -m py_compile app.py routes/*.py src/*.py
 node --check static/js/<file-you-changed>.js
-```
-
-For Docker-related changes:
-
-```bash
-docker compose config
-docker compose up -d --build
-docker compose logs --tail=120 odysseus
 ```
 
 Mention what you ran in the pull request description. If you could not run a check, say so.
@@ -110,7 +102,7 @@ If you need a value that has no constant or helper yet, add it to `src/constants
 
 For bugs, include:
 
-- Install method: Docker, manual Python, WSL, etc.
+- Install method: macOS app, manual Python, WSL, etc.
 - OS, browser, and device if relevant.
 - Exact steps to reproduce.
 - Expected behavior and actual behavior.
@@ -130,4 +122,3 @@ Issues with only "help", "does not work", or a screenshot without context may be
 Do not post secrets, API keys, private logs, personal documents, or public IPs in issues or pull requests.
 
 For security reports, follow [SECURITY.md](SECURITY.md).
-

@@ -141,6 +141,8 @@ from src.tool_schemas import (  # noqa: E402, F401
 from src.tool_execution import (  # noqa: E402, F401
     execute_tool_block,
     format_tool_result,
+    ProjectPolicy,
+    PROJECT_SCOPED_TOOLS,
 )
 
 # Document functions

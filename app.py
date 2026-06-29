@@ -857,6 +857,10 @@ app.include_router(setup_backup_routes(memory_manager, preset_manager, skills_ma
 from routes.font_routes import setup_font_routes
 app.include_router(setup_font_routes())
 
+# Projects (desktop-only folder-scoped agent workspace)
+from routes.project_routes import setup_project_routes
+app.include_router(setup_project_routes())
+
 
 # MCP (Model Context Protocol)
 from src.mcp_manager import McpManager

@@ -18,6 +18,12 @@ import traceback
 # Desktop app: keep users logged in for 90 days (override the 7-day server
 # default). Must be set before core.auth is imported by the server thread.
 os.environ.setdefault("ODYSSEUS_SESSION_TTL", str(60 * 60 * 24 * 90))
+# Desktop app is a loopback-only personal app by default; server/docker
+# deployments still default to AUTH_ENABLED=true in app.py.
+os.environ.setdefault("AUTH_ENABLED", "false")
+# Desktop app: enable desktop-only surfaces (e.g. Projects, which needs a
+# real filesystem path and shell access the browser cannot provide).
+os.environ.setdefault("ODYSSEUS_DESKTOP_APP", "1")
 
 # PyInstaller + multiprocessing.spawn (macOS default) re-executes the frozen
 # exe for worker processes. freeze_support at the very top routes those
@@ -95,6 +101,31 @@ def _start_server_thread() -> threading.Thread:
     return t
 
 
+class NativeBridge:
+    """JS API exposed to the webview frontend via `window.pywebview.api`."""
+
+    def pick_folder(self):
+        import webview
+        paths = webview.windows[0].create_file_dialog(webview.FOLDER_DIALOG)
+        if not paths:
+            return {"cancelled": True, "path": ""}
+        return {"cancelled": False, "path": os.path.realpath(paths[0])}
+
+    def pick_file(self):
+        import webview
+        paths = webview.windows[0].create_file_dialog(webview.OPEN_DIALOG)
+        if not paths:
+            return {"cancelled": True, "path": ""}
+        return {"cancelled": False, "path": os.path.realpath(paths[0])}
+
+    def reveal_in_finder(self, path: str):
+        resolved = os.path.realpath(os.path.expanduser(path or ""))
+        if resolved:
+            import subprocess
+            subprocess.run(["open", "-R", resolved], check=False)
+        return {"ok": True}
+
+
 _LOADING_HTML = """<!doctype html><html><head><meta charset='utf-8'>
 <title>Odysseus</title>
 <style>
@@ -130,6 +161,67 @@ white-space:pre-wrap;word-break:break-word;font-size:13px;color:#aab2c8}}
 </body></html>"""
 
 
+# JS shim that finishes what pywebview's finish.js is supposed to do: populate
+# window.pywebview.api.<method> and dispatch pywebviewready. pywebview injects
+# api.js (which sets window.pywebview = {api: {}}) at document-start reliably,
+# but finish.js is run via evaluateJavaScript from a Python thread that can
+# deadlock on window._expose_lock when a navigation (loading page -> server
+# page, then sessions.js setting location.hash) interrupts the pending
+# completionHandler. When that happens, api.js has already run but _createApi
+# never does, so window.pywebview.api stays {} and the Projects rail (which
+# waits for window.pywebview.api.pick_folder) never appears. This helper
+# detects that state and finishes the job manually, bypassing the lock.
+_BRIDGE_SHIM_JS = """
+(function(){
+  if (!window.pywebview || typeof window.pywebview._createApi !== 'function') return 'pending';
+  if (typeof (window.pywebview.api || {}).pick_folder === 'function') return 'already';
+  window.pywebview._createApi([
+    {func: 'pick_folder', params: []},
+    {func: 'pick_file', params: []},
+    {func: 'reveal_in_finder', params: ['path']}
+  ]);
+  try { window.dispatchEvent(new CustomEvent('pywebviewready')); } catch(e){}
+  try { document.dispatchEvent(new CustomEvent('pywebviewready')); } catch(e){}
+  return 'injected';
+})()
+"""
+
+def _eval_js_safe(window, script, timeout_s=2.0):
+    """Run window.evaluate_js without hanging forever if the webview is
+    mid-navigation. evaluate_js blocks on a semaphore until the JS
+    completionHandler fires; on cocoa that can stall during navigations.
+    Run it in a worker thread with a hard timeout so a stalled call can't
+    pin the bridge-injection loop."""
+    result = [None]
+    err = [None]
+    def worker():
+        try:
+            result[0] = window.evaluate_js(script)
+        except Exception as e:
+            err[0] = e
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    t.join(timeout_s)
+    if t.is_alive():
+        return None  # stalled; abandon this attempt, retry later
+    if err[0]:
+        return None
+    return result[0]
+
+def _ensure_native_bridge(window) -> None:
+    """After load_url, poll the webview and manually finish pywebview's bridge
+    injection if finish.js got stuck. Idempotent: if pywebview's own finish.js
+    already populated the api, the shim returns 'already' and does nothing."""
+    deadline = time.time() + 30.0
+    last = None
+    while time.time() < deadline:
+        last = _eval_js_safe(window, _BRIDGE_SHIM_JS)
+        if last in ('already', 'injected'):
+            return
+        time.sleep(0.5)
+    # Last attempt already made inside the loop; nothing more to do.
+
+
 def main() -> None:
     if not _acquire_single_instance_lock():
         # Another Odysseus is already running and owns the window. Don't open
@@ -142,7 +234,7 @@ def main() -> None:
     import webview
     window = webview.create_window(
         "Odysseus", html=_LOADING_HTML, width=980, height=640,
-        min_size=(900, 600), text_select=False,
+        min_size=(900, 600), text_select=False, js_api=NativeBridge(),
     )
 
     def _server_http_ready() -> bool:
@@ -164,13 +256,17 @@ def main() -> None:
     def _navigate_when_ready() -> None:
         deadline = time.time() + STARTUP_TIMEOUT
         token = _valid_session_token()
-        target = f"{URL}?desktop_token={token}" if token else URL
+        target = f"{URL}?desktop=1&desktop_token={token}" if token else f"{URL}?desktop=1"
         while time.time() < deadline:
             if _server_http_ready():
                 try:
                     window.load_url(target)
                 except Exception:
                     pass
+                # pywebview's finish.js bridge injection can deadlock if a
+                # navigation interrupts it (see _ensure_native_bridge). Patch
+                # it up from the Python side so the Projects rail shows up.
+                threading.Thread(target=_ensure_native_bridge, args=(window,), daemon=True).start()
                 return
             time.sleep(0.5)
         try:
