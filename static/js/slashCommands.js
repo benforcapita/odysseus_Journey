@@ -1378,6 +1378,7 @@ async function _cmdOpen(args, ctx) {
       memories: ['tool-memory-btn', 'rail-memory'],
       research: ['tool-research-btn', 'rail-research'],
       compare: ['tool-compare-btn', 'rail-compare'],
+      council: ['tool-council-btn', 'rail-council'],
       theme: ['tool-theme-btn', 'rail-theme'],
     };
     const ids = targets[target];

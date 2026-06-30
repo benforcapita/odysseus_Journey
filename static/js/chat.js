@@ -1121,6 +1121,12 @@ import { loadPanel } from './panels.js';
     
     const submitBtn = document.querySelector('.send-btn');
     
+    // If council is active, route submit to the council handler
+    if (window.councilModule && window.councilModule.isActive()) {
+      window.councilModule.handleCouncilSubmit();
+      return;
+    }
+
     // If compare is active, stop all compare streams
     if (window.compareModule && window.compareModule.isActive()) {
       window.compareModule.handleCompareSubmit();

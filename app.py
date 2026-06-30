@@ -846,6 +846,10 @@ app.include_router(setup_hwfit_routes())
 from routes.compare.compare_routes import setup_compare_routes
 app.include_router(setup_compare_routes(session_manager))
 
+# Council of High Intelligence (multi-persona deliberation tool)
+from routes.council_routes import setup_council_routes
+app.include_router(setup_council_routes())
+
 # User Preferences
 from routes.prefs_routes import setup_prefs_routes
 app.include_router(setup_prefs_routes())

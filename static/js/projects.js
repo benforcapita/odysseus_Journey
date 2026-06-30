@@ -157,6 +157,10 @@ function wireProjectsUI(rail) {
   rail.addEventListener('click', () => openProjectsView());
   document.getElementById('projects-form')?.addEventListener('submit', sendProjectPrompt);
   document.getElementById('projects-reveal-btn')?.addEventListener('click', revealActiveProject);
+  // Composer affordance: quick-access icon that reveals the active project's
+  // working directory in Finder. Reuses the existing revealActiveProject
+  // helper — no new logic, just a second entry point from the chat composer.
+  document.getElementById('projects-compose-reveal')?.addEventListener('click', revealActiveProject);
   document.getElementById('projects-auto-approve')?.addEventListener('change', toggleAutoApprove);
   document.getElementById('projects-access-btn')?.addEventListener('click', toggleAccessButton);
   // Delegated click handling for the Approve/Reject/Approve & continue buttons
@@ -209,6 +213,7 @@ async function openProject(id) {
 
 async function renderProject(project) {
   window.__odysseusActiveProject = project;
+  setProjectsChatEmpty(false);
   updateProjectHero(project);
   const treeEl = document.getElementById('projects-tree');
   if (treeEl) {
@@ -238,18 +243,18 @@ function updateProjectHero(project) {
   if (access) access.textContent = state.access;
 }
 
+function setProjectsChatEmpty(isEmpty) {
+  const chat = document.getElementById('projects-view')?.querySelector('.projects-chat');
+  if (!chat) return;
+  chat.classList.toggle('projects-chat-empty', !!isEmpty);
+}
+
 function renderProjectEmptyState() {
   if (window.__odysseusActiveProject) return;
   updateProjectHero(null);
   const histEl = document.getElementById('projects-history');
-  if (!histEl) return;
-  histEl.innerHTML = `
-    <div class="projects-empty-state">
-      <div class="projects-empty-title">Choose a folder to start a project</div>
-      <div class="projects-empty-sub">Project chats stay separate from normal chats and run scoped to that folder.</div>
-      <button type="button" class="confirm-btn" id="projects-empty-new-btn">New Project</button>
-    </div>`;
-  document.getElementById('projects-empty-new-btn')?.addEventListener('click', createProjectFromPicker);
+  if (histEl) histEl.innerHTML = '';
+  setProjectsChatEmpty(true);
 }
 
 async function sendProjectPrompt(event) {

@@ -12,6 +12,7 @@ import presetsModule from './js/presets.js';
 import searchModule from './js/search.js';
 import chatModule from './js/chat.js?v=20260815toolapproval4';
 import compareModule from './js/compare/index.js?v=20260723compareicon2';
+import councilModule from './js/council/index.js';
 import documentModule from './js/document.js?v=20260815approvalsave1';
 import searchChatModule from './js/search-chat.js';
 import commandPaletteModule from './js/commandPalette.js';
@@ -988,6 +989,10 @@ function initializeEventListeners() {
       compareModule.deactivate(true);
       return true;
     }
+    if (councilModule && councilModule.isActive()) {
+      councilModule.deactivate(true);
+      return true;
+    }
     return false;
   }
 
@@ -1008,6 +1013,25 @@ function initializeEventListeners() {
         }
         _startFreshChat();
         compareModule.toggleMode();
+      }
+    });
+  }
+
+  // ── Council tool (multi-persona deliberation, like Compare) ──
+  const toolCouncilBtn = el('tool-council-btn');
+  if (toolCouncilBtn) {
+    toolCouncilBtn.addEventListener('click', () => {
+      if (councilModule) {
+        if (councilModule.isActive()) {
+          councilModule.toggleMode();
+          return;
+        }
+        // Close other exclusive tools (compare/research) before opening council
+        if (compareModule && compareModule.isActive()) compareModule.deactivate(true);
+        const resChk = el('research-toggle');
+        if (resChk && resChk.checked) { _syncResearchIndicator(false); }
+        _startFreshChat();
+        councilModule.toggleMode();
       }
     });
   }
@@ -3730,6 +3754,10 @@ function startOdysseusApp() {
   if (compareModule) {
     compareModule.init(API_BASE);
   }
+  // Initialize council module
+  if (councilModule) {
+    councilModule.init(API_BASE);
+  }
   researchPanelModule.init(API_BASE, markdownModule, sessionModule);
   // Initialize document editor module
   if (documentModule) {
@@ -3759,6 +3787,7 @@ function startOdysseusApp() {
   // Rail tool buttons — delegate to sidebar tool buttons
   const _railToolMap = {
     'rail-compare':   'tool-compare-btn',
+    'rail-council':   'tool-council-btn',
     'rail-research':  'tool-research-btn',
     'rail-cookbook':   'tool-cookbook-btn',
     'rail-archive':   'tool-library-btn',
@@ -3874,6 +3903,11 @@ function startOdysseusApp() {
     _submitting = true;
     // Release after a short delay (stream start sets its own isStreaming guard)
     setTimeout(() => { _submitting = false; }, 300);
+
+    // Council mode: route to council handler (multi-persona deliberation)
+    if (councilModule && councilModule.isActive()) {
+      return councilModule.handleCouncilSubmit();
+    }
 
     // Compare mode: route submit to compare handler (same message to all panes)
     if (compareModule && compareModule.isActive()) {
