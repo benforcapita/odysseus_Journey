@@ -121,6 +121,46 @@ def test_create_list_and_owner_scope_project(monkeypatch, tmp_path):
     assert len(bob.get("/api/projects").json()) == 1
 
 
+def test_project_reports_parent_git_branch(monkeypatch, tmp_path):
+    factory = _bind_db(monkeypatch, tmp_path)
+    root = tmp_path / "repo"
+    child = root / "packages" / "app"
+    child.mkdir(parents=True)
+    git_dir = root / ".git"
+    git_dir.mkdir()
+    (git_dir / "HEAD").write_text("ref: refs/heads/codex/projects\n", encoding="utf-8")
+    client = _make_client(monkeypatch, factory, "alice")
+
+    created = client.post("/api/projects", json={"folder_path": str(child)}).json()
+    detail = client.get(f"/api/projects/{created['id']}").json()
+
+    assert created["git_branch"] == "codex/projects"
+    assert detail["git_branch"] == "codex/projects"
+
+
+def test_update_project_model_and_auto_approve(monkeypatch, tmp_path):
+    factory = _bind_db(monkeypatch, tmp_path)
+    root = tmp_path / "repo"
+    root.mkdir()
+    client = _make_client(monkeypatch, factory, "alice")
+
+    project = client.post("/api/projects", json={"folder_path": str(root)}).json()
+    updated = client.patch(
+        f"/api/projects/{project['id']}",
+        json={
+            "model": "gpt-5",
+            "endpoint_url": "http://127.0.0.1:11434/v1",
+            "endpoint_id": "ep-local",
+            "auto_approve": True,
+        },
+    ).json()
+
+    assert updated["model"] == "gpt-5"
+    assert updated["endpoint_url"] == "http://127.0.0.1:11434/v1"
+    assert updated["endpoint_id"] == "ep-local"
+    assert updated["auto_approve"] is True
+
+
 def test_get_project_returns_tree_and_messages(monkeypatch, tmp_path):
     factory = _bind_db(monkeypatch, tmp_path)
     root = tmp_path / "repo"

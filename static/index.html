@@ -1334,7 +1334,12 @@
     <aside class="projects-sidebar">
       <div id="projects-status" class="projects-status" role="status" aria-live="polite"></div>
       <div id="projects-list" class="projects-list"></div>
-      <div class="projects-files-header">Files</div>
+      <div class="projects-files-header">
+        <span>Files</span>
+        <button type="button" id="projects-files-toggle" class="input-icon-btn" title="Collapse files" aria-label="Collapse project files" aria-expanded="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+      </div>
       <div id="projects-tree" class="projects-tree"></div>
     </aside>
     <section class="projects-chat">
@@ -1344,6 +1349,12 @@
         <form id="projects-form" class="chat-input-bar projects-compose">
           <div class="chat-input-top">
             <textarea id="projects-input" rows="1" placeholder="Ask the project agent..." aria-label="Project message input"></textarea>
+            <div class="model-picker-wrap projects-model-picker-wrap" id="projects-model-picker-wrap">
+              <button type="button" class="model-picker-btn" id="projects-model-picker-btn" title="Switch project model"><span id="projects-model-picker-label">Select model</span> <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"/></svg></button>
+              <div class="model-picker-menu hidden" id="projects-model-picker-menu">
+                <div class="model-picker-list" id="projects-model-picker-list"></div>
+              </div>
+            </div>
           </div>
           <div class="chat-input-bottom">
             <div class="chat-input-left">
@@ -1359,15 +1370,10 @@
           </div>
         </form>
         <div class="projects-command-strip" aria-label="Project settings">
-          <button type="button" id="projects-reveal-btn" class="projects-command" title="Set working directory">
+          <button type="button" id="projects-reveal-btn" class="projects-command" title="Choose project folder">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
             <span>Working directory</span>
             <strong id="projects-dir-label">Choose folder</strong>
-          </button>
-          <button type="button" class="projects-command" title="Model">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/></svg>
-            <span>Model</span>
-            <strong id="projects-model-label">Default</strong>
           </button>
           <button type="button" class="projects-command" title="Git branch">
             <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><path d="M6 9a8 8 0 0 1 8 8"/></svg>

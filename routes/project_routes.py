@@ -246,6 +246,28 @@ def setup_project_routes() -> APIRouter:
         finally:
             db.close()
 
+    @router.patch("/{project_id}")
+    async def update_project(project_id: str, request: Request):
+        _desktop_required()
+        owner = get_current_user(request)
+        payload = await request.json()
+        db = SessionLocal()
+        try:
+            project = get_owned_project(db, project_id, owner)
+            if "model" in payload:
+                project.model = str(payload.get("model") or "")
+            if "endpoint_url" in payload:
+                project.endpoint_url = str(payload.get("endpoint_url") or "")
+            if "endpoint_id" in payload:
+                project.endpoint_id = str(payload.get("endpoint_id") or "")
+            if "auto_approve" in payload:
+                project.auto_approve = bool(payload.get("auto_approve"))
+            db.commit()
+            db.refresh(project)
+            return project_to_dict(project)
+        finally:
+            db.close()
+
     @router.get("/{project_id}/tree")
     def project_tree(project_id: str, request: Request):
         _desktop_required()

@@ -42,6 +42,30 @@ def scrub_project_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
     return {key: value for key, value in metadata.items() if key in _ALLOWED_METADATA_KEYS}
 
 
+def current_git_branch(folder_path: str) -> str:
+    path = os.path.realpath(folder_path)
+    while True:
+        git_path = os.path.join(path, ".git")
+        head_path = os.path.join(git_path, "HEAD")
+        if os.path.isfile(git_path):
+            try:
+                target = open(git_path, encoding="utf-8").read().strip()
+            except OSError:
+                target = ""
+            if target.startswith("gitdir:"):
+                head_path = os.path.join(os.path.realpath(target[7:].strip()), "HEAD")
+        if os.path.isfile(head_path):
+            try:
+                head = open(head_path, encoding="utf-8").read().strip()
+            except OSError:
+                return ""
+            return head.removeprefix("ref: refs/heads/") if head.startswith("ref: refs/heads/") else head[:12]
+        parent = os.path.dirname(path)
+        if parent == path:
+            return ""
+        path = parent
+
+
 def project_to_dict(project: Project) -> dict[str, Any]:
     folder_path = os.path.realpath(project.folder_path)
     return {
@@ -49,6 +73,7 @@ def project_to_dict(project: Project) -> dict[str, Any]:
         "name": project.name,
         "folder_path": folder_path,
         "folder_name": os.path.basename(folder_path),
+        "git_branch": current_git_branch(folder_path),
         "linked_paths": project.linked_paths or [],
         "model": project.model or "",
         "endpoint_url": project.endpoint_url or "",

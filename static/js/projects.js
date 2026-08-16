@@ -8,6 +8,7 @@
 // globals at import time.
 
 const API_BASE = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : '';
+let projectModels = [];
 
 export function isDesktopBridgeAvailable(win = window) {
   return !!(win && win.pywebview && win.pywebview.api && typeof win.pywebview.api.pick_folder === 'function');
@@ -67,6 +68,27 @@ export function buildProjectHeroState(project) {
   };
 }
 
+export function shouldCenterProjectComposer(project) {
+  return !project || !(project.messages || []).length;
+}
+
+export function reduceProjectStreamState(state, data) {
+  if (!data || typeof data.delta !== 'string') {
+    return { ...state, changed: false };
+  }
+  return { ...state, assistantText: `${state?.assistantText || ''}${data.delta}`, changed: true };
+}
+
+export function validateProjectSubmission(project, content, modelsAvailable) {
+  const text = (content || '').trim();
+  if (!text) return { ok: false, error: '' };
+  if (!project) return { ok: false, error: 'Choose a project folder to start chatting' };
+  // Only block on a missing model when the picker actually has models to
+  // choose from -- otherwise let the backend attempt and surface its error.
+  if (modelsAvailable && !project.model) return { ok: false, error: 'Pick a model before sending' };
+  return { ok: true, error: '' };
+}
+
 export function renderApprovalCardHtml(event) {
   const op = (event && event.operation) || {};
   const pendingId = esc(event && event.pending_id);
@@ -89,6 +111,16 @@ export function renderProjectTreeHtml(entries) {
     .filter(e => e && e.kind === 'folder')
     .map(e => `<div class="projects-file-row" title="${esc(e.path)}">${esc(e.name)}/</div>`)
     .join('') || '<div class="projects-empty">No folders</div>';
+}
+
+export function flattenProjectModels(items) {
+  return (items || []).flatMap(ep => (ep.models || []).map((model, index) => ({
+    model,
+    displayName: (ep.models_display || ep.models || [])[index] || model,
+    endpointUrl: ep.url || '',
+    endpointId: ep.endpoint_id || null,
+    endpointName: ep.name || '',
+  })));
 }
 
 function esc(text) {
@@ -156,13 +188,33 @@ function wireProjectsUI(rail) {
   }
   rail.addEventListener('click', () => openProjectsView());
   document.getElementById('projects-form')?.addEventListener('submit', sendProjectPrompt);
-  document.getElementById('projects-reveal-btn')?.addEventListener('click', revealActiveProject);
+  // Composer keyboard + auto-resize wiring, mirroring the main chat composer:
+  // Enter sends (Shift+Enter for a newline), and the textarea grows to fit
+  // multi-line input instead of staying pinned at one row.
+  const _projectsInput = document.getElementById('projects-input');
+  if (_projectsInput) {
+    _projectsInput.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      if (e.shiftKey || e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (window.innerWidth <= 768) return; // mobile: keep newline entry
+      e.preventDefault();
+      const form = document.getElementById('projects-form');
+      if (!form) return;
+      if (typeof form.requestSubmit === 'function') form.requestSubmit();
+      else form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    });
+    _projectsInput.addEventListener('input', () => autoResizeProjectInput(_projectsInput));
+  }
+  document.getElementById('projects-reveal-btn')?.addEventListener('click', createProjectFromPicker);
   // Composer affordance: quick-access icon that reveals the active project's
   // working directory in Finder. Reuses the existing revealActiveProject
   // helper — no new logic, just a second entry point from the chat composer.
   document.getElementById('projects-compose-reveal')?.addEventListener('click', revealActiveProject);
   document.getElementById('projects-auto-approve')?.addEventListener('change', toggleAutoApprove);
   document.getElementById('projects-access-btn')?.addEventListener('click', toggleAccessButton);
+  document.getElementById('projects-files-toggle')?.addEventListener('click', toggleProjectsSidebar);
+  document.getElementById('projects-model-picker-btn')?.addEventListener('click', toggleProjectModelPicker);
+  document.addEventListener('click', closeProjectModelPickerOnOutsideClick);
   // Delegated click handling for the Approve/Reject/Approve & continue buttons
   // rendered inside the project history by renderApprovalCardHtml.
   const _history = document.getElementById('projects-history');
@@ -173,6 +225,7 @@ function wireProjectsUI(rail) {
   document.getElementById('rail-new-session')?.addEventListener('click', closeProjectsView);
   installProjectsNavigationClose();
   loadProjects();
+  loadProjectModels();
   renderProjectEmptyState();
 }
 
@@ -190,6 +243,13 @@ async function loadProjects() {
   list.querySelectorAll('[data-project-id]').forEach(btn => btn.addEventListener('click', () => openProject(btn.dataset.projectId)));
 }
 
+async function loadProjectModels() {
+  const data = await api('/api/models').catch(() => ({ items: [] }));
+  projectModels = flattenProjectModels(data.items);
+  renderProjectModelList();
+  updateProjectModelPickerLabel(window.__odysseusActiveProject || null);
+}
+
 async function createProjectFromPicker() {
   setStatus('');
   try {
@@ -198,7 +258,7 @@ async function createProjectFromPicker() {
     const project = await api('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folder_path: picked.path }),
+      body: JSON.stringify({ folder_path: picked.path, ...selectedProjectModelPayload() }),
     });
     await loadProjects();
     await renderProject(project);
@@ -213,7 +273,6 @@ async function openProject(id) {
 
 async function renderProject(project) {
   window.__odysseusActiveProject = project;
-  setProjectsChatEmpty(false);
   updateProjectHero(project);
   const treeEl = document.getElementById('projects-tree');
   if (treeEl) {
@@ -223,8 +282,10 @@ async function renderProject(project) {
   if (histEl) {
     histEl.innerHTML = (project.messages || []).map(m => `<div class="message ${esc(m.role)}"><div class="message-content">${esc(m.content)}</div></div>`).join('') || '';
   }
+  setProjectsChatEmpty(shouldCenterProjectComposer(project));
   const autoEl = document.getElementById('projects-auto-approve');
   if (autoEl) autoEl.checked = !!project.auto_approve;
+  updateProjectModelPickerLabel(project);
   renderChanges([]);
   openProjectsView();
 }
@@ -241,6 +302,92 @@ function updateProjectHero(project) {
   if (model) model.textContent = state.model;
   if (branch) branch.textContent = state.branch;
   if (access) access.textContent = state.access;
+}
+
+function selectedProjectModelPayload() {
+  const chosen = document.getElementById('projects-model-picker-btn')?.dataset || {};
+  return chosen.model ? {
+    model: chosen.model,
+    endpoint_url: chosen.endpointUrl || '',
+    endpoint_id: chosen.endpointId || '',
+  } : {};
+}
+
+function updateProjectModelPickerLabel(project) {
+  const btn = document.getElementById('projects-model-picker-btn');
+  const label = document.getElementById('projects-model-picker-label');
+  if (!btn || !label) return;
+  const model = project?.model || btn.dataset.model || '';
+  if (project?.model) {
+    btn.dataset.model = project.model;
+    btn.dataset.endpointUrl = project.endpoint_url || '';
+    btn.dataset.endpointId = project.endpoint_id || '';
+  }
+  label.textContent = model ? model.split('/').pop() : 'Select model';
+}
+
+function renderProjectModelList() {
+  const list = document.getElementById('projects-model-picker-list');
+  if (!list) return;
+  list.innerHTML = projectModels.length ? projectModels.map((m, idx) => `
+    <button type="button" class="model-switch-item" data-project-model-idx="${idx}">
+      <span class="mp-model-name">${esc(m.displayName.split('/').pop())}</span>
+      <span class="model-switch-ep">${esc(m.endpointName)}</span>
+    </button>`).join('') : '<div class="model-switch-empty">No models</div>';
+  list.querySelectorAll('[data-project-model-idx]').forEach(btn => {
+    btn.addEventListener('click', () => selectProjectModel(projectModels[Number(btn.dataset.projectModelIdx)]));
+  });
+}
+
+function toggleProjectModelPicker(event) {
+  event?.stopPropagation?.();
+  const menu = document.getElementById('projects-model-picker-menu');
+  if (!menu) return;
+  if (!projectModels.length) loadProjectModels();
+  menu.classList.toggle('hidden');
+  menu.classList.toggle('open', !menu.classList.contains('hidden'));
+}
+
+function closeProjectModelPicker() {
+  const menu = document.getElementById('projects-model-picker-menu');
+  menu?.classList.add('hidden');
+  menu?.classList.remove('open');
+}
+
+function closeProjectModelPickerOnOutsideClick(event) {
+  if (event.target?.closest?.('#projects-model-picker-wrap')) return;
+  closeProjectModelPicker();
+}
+
+async function selectProjectModel(item) {
+  if (!item) return;
+  const btn = document.getElementById('projects-model-picker-btn');
+  if (btn) {
+    btn.dataset.model = item.model;
+    btn.dataset.endpointUrl = item.endpointUrl || '';
+    btn.dataset.endpointId = item.endpointId || '';
+  }
+  const project = window.__odysseusActiveProject;
+  if (project?.id) {
+    Object.assign(project, { model: item.model, endpoint_url: item.endpointUrl || '', endpoint_id: item.endpointId || '' });
+    await api(`/api/projects/${encodeURIComponent(project.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(selectedProjectModelPayload()),
+    });
+  }
+  updateProjectHero(project || { model: item.model });
+  updateProjectModelPickerLabel(project || { model: item.model, endpoint_url: item.endpointUrl, endpoint_id: item.endpointId });
+  closeProjectModelPicker();
+}
+
+// Grow the project composer to fit its content, capped at the CSS max-height.
+// Mirrors the main chat composer's auto-resize so multi-line prompts don't
+// overflow the single-row textarea.
+function autoResizeProjectInput(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
 }
 
 function setProjectsChatEmpty(isEmpty) {
@@ -261,35 +408,117 @@ async function sendProjectPrompt(event) {
   event.preventDefault();
   const project = window.__odysseusActiveProject;
   const input = document.getElementById('projects-input');
-  const content = (input?.value || '').trim();
-  if (!project || !content) return;
+  const content = input?.value || '';
+  const guard = validateProjectSubmission(project, content, projectModels.length > 0);
+  if (!guard.ok) {
+    if (guard.error) setStatus(guard.error, true);
+    return;
+  }
+  setStatus('');
   if (input) input.value = '';
-  await api(`/api/projects/${encodeURIComponent(project.id)}/messages`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-  });
-  subscribeProject(project.id);
+  autoResizeProjectInput(input);
+  setProjectsChatEmpty(false);
+  appendProjectMessage('user', content.trim());
+  try {
+    await api(`/api/projects/${encodeURIComponent(project.id)}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: content.trim() }),
+    });
+    subscribeProject(project.id);
+  } catch (err) {
+    setStatus(err?.message || 'Failed to send message', true);
+  }
+}
+
+/**
+ * Turn a named `event: error` SSE MessageEvent (or a plain connection-error
+ * Event) into a user-facing status string. Returns null when the event is not
+ * an error payload we know how to surface (e.g. a real connection failure,
+ * which has no .data) so the caller can fall back to the generic message.
+ *
+ * Exported for unit tests; the SSE path is hard to exercise in Node without a
+ * browser EventSource, so the parsing logic is factored out here.
+ */
+export function projectStreamErrorMessage(event) {
+  if (typeof event?.data !== 'string' || !event.data) return null;
+  let payload = null;
+  try { payload = JSON.parse(event.data); } catch { return null; }
+  if (!payload || typeof payload !== 'object') return null;
+  const msg = payload.text || payload.error || (payload.status ? `Error ${payload.status}` : null);
+  return msg ? `Project agent error: ${msg}` : null;
 }
 
 function subscribeProject(projectId) {
   const es = new EventSource(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}/stream`, { withCredentials: true });
   const events = [];
+  let streamState = { assistantText: '' };
+  let assistantEl = null;
+  // Set when we surface a real upstream error event so _signalEmptyFailure
+  // doesn't overwrite it with the generic "no response" fallback.
+  let sawStreamError = false;
+  const _signalEmptyFailure = () => {
+    // Stream ended without a single assistant delta or tool event -- surface
+    // that as a status instead of leaving the user staring at their own
+    // message with no reply (the "input cleared, nothing happened" case).
+    if (!sawStreamError && !streamState.assistantText && !events.length) {
+      setStatus('No response from the project agent. Check the model and endpoint.', true);
+    }
+  };
   es.onmessage = (event) => {
     if (event.data === '[DONE]') {
+      _signalEmptyFailure();
       es.close();
       return;
     }
     let data;
     try { data = JSON.parse(event.data); } catch { return; }
-    if (data.type === 'tool_output') {
+    streamState = reduceProjectStreamState(streamState, data);
+    if (streamState.changed) {
+      assistantEl = assistantEl || appendProjectMessage('assistant', '');
+      const content = assistantEl.querySelector('.message-content');
+      if (content) content.textContent = streamState.assistantText;
+      scrollProjectsHistory();
+    } else if (data.type === 'tool_output') {
       events.push(data);
       renderChanges(events);
     } else if (data.type === 'pending_approval' || data.pending === true) {
       appendApprovalCard(data);
     }
   };
-  es.onerror = () => { es.close(); };
+  // EventSource routes a named `event: error` SSE message here as a
+  // MessageEvent with .data set to the JSON payload; a real connection
+  // failure fires a plain Event with no data. Distinguish the two so we
+  // surface the upstream error (status/text) instead of silently
+  // discarding it and falling back to the generic "no response" message.
+  es.onerror = (event) => {
+    const errMsg = projectStreamErrorMessage(event);
+    if (errMsg) {
+      setStatus(errMsg, true);
+      sawStreamError = true;
+    }
+    _signalEmptyFailure();
+    es.close();
+  };
+}
+
+function appendProjectMessage(role, content) {
+  const hist = document.getElementById('projects-history');
+  if (!hist) return null;
+  const msg = document.createElement('div');
+  msg.className = `message ${role}`;
+  const body = document.createElement('div');
+  body.className = 'message-content';
+  body.textContent = content || '';
+  msg.appendChild(body);
+  hist.appendChild(msg);
+  scrollProjectsHistory();
+  return msg;
+}
+
+function scrollProjectsHistory() {
+  const hist = document.getElementById('projects-history');
+  if (hist) hist.scrollTop = hist.scrollHeight;
 }
 
 function appendApprovalCard(data) {
@@ -298,7 +527,7 @@ function appendApprovalCard(data) {
   const wrap = document.createElement('div');
   wrap.innerHTML = renderApprovalCardHtml(data);
   hist.appendChild(wrap.firstElementChild);
-  hist.scrollTop = hist.scrollHeight;
+  scrollProjectsHistory();
 }
 
 async function handleApprovalClick(event) {
@@ -346,8 +575,12 @@ async function revealActiveProject() {
 async function toggleAutoApprove(event) {
   const project = window.__odysseusActiveProject;
   if (!project) return;
-  // Optimistic local toggle; persistence is wired in a later task.
   project.auto_approve = !!event.target?.checked;
+  api(`/api/projects/${encodeURIComponent(project.id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ auto_approve: project.auto_approve }),
+  }).catch(() => {});
   updateProjectHero(project);
 }
 
@@ -356,6 +589,15 @@ function toggleAccessButton() {
   if (!cb) return;
   cb.checked = !cb.checked;
   cb.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function toggleProjectsSidebar() {
+  const view = document.getElementById('projects-view');
+  const btn = document.getElementById('projects-files-toggle');
+  const collapsed = !view?.classList.contains('projects-files-collapsed');
+  view?.classList.toggle('projects-files-collapsed', collapsed);
+  btn?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  if (btn) btn.title = collapsed ? 'Expand files' : 'Collapse files';
 }
 
 export default { initProjectsUI, openProjectsView, closeProjectsView };

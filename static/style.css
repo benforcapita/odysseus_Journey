@@ -41672,6 +41672,9 @@ body.settings-sidebar-resize-active {
   color: var(--fg);
   overflow: hidden;
 }
+.projects-view.projects-files-collapsed {
+  grid-template-columns: 42px minmax(420px, 1fr) minmax(240px, 320px);
+}
 .projects-view.hidden { display: none !important; }
 .projects-sidebar,
 .projects-changes {
@@ -41729,6 +41732,14 @@ body.settings-sidebar-resize-active {
   margin: auto;
 }
 
+/* The "What should we build" heading is a welcome-state prompt: it only
+   belongs above the centered composer before the first send. Once a prompt
+   is submitted, the chat docks to the bottom and the heading is hidden so it
+   doesn't linger above an active conversation. */
+.projects-chat:not(.projects-chat-empty) .projects-compose-wrap h1 {
+  display: none;
+}
+
 .projects-compose-wrap h1 {
   margin: 0 0 10px;
   color: var(--fg);
@@ -41757,6 +41768,7 @@ body.settings-sidebar-resize-active {
   font: inherit;
   padding: 0;
   line-height: 1.5;
+  padding-right: 142px;
 }
 /* Project composer — visually mirrors the main chat page's input bar.
    Same dark rounded container, muted border, and centered composition;
@@ -41782,6 +41794,26 @@ body.settings-sidebar-resize-active {
 }
 .projects-chat .chat-input-bar.projects-compose .chat-input-left {
   gap: 4px;
+}
+.projects-chat .chat-input-top > .projects-model-picker-wrap {
+  right: 0;
+  left: auto;
+  transform-origin: top right;
+}
+.projects-model-picker-wrap .model-picker-menu {
+  bottom: auto;
+  top: calc(100% + 8px);
+  left: auto;
+  right: 0;
+  animation: none;
+  transform-origin: top right;
+}
+.projects-model-picker-wrap .model-switch-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
 }
 .projects-chat .chat-input-bar.projects-compose textarea::placeholder {
   color: color-mix(in srgb, var(--fg) 35%, transparent);
@@ -41867,12 +41899,39 @@ body.settings-sidebar-resize-active {
   color: var(--red, #e06c75);
 }
 .projects-files-header {
-  padding: 12px 14px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 8px 8px 14px;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: color-mix(in srgb, var(--fg) 60%, transparent);
   border-top: 1px solid var(--border);
+}
+.projects-files-header .input-icon-btn {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  flex: 0 0 auto;
+}
+.projects-view.projects-files-collapsed .projects-sidebar {
+  overflow: hidden;
+}
+.projects-view.projects-files-collapsed .projects-status,
+.projects-view.projects-files-collapsed .projects-list,
+.projects-view.projects-files-collapsed .projects-tree,
+.projects-view.projects-files-collapsed .projects-files-header span {
+  display: none;
+}
+.projects-view.projects-files-collapsed .projects-files-header {
+  justify-content: center;
+  padding: 10px 0;
+  border-top: 0;
+}
+.projects-view.projects-files-collapsed #projects-files-toggle svg {
+  transform: rotate(180deg);
 }
 .projects-list {
   padding-top: 8px;
