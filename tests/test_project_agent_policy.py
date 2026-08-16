@@ -1,6 +1,6 @@
 import pytest
 
-from src.tool_execution import ProjectPolicy, execute_tool_block
+from src.tool_execution import ProjectPolicy, execute_tool_block, NO_TOOL_SECURITY_CONTEXT
 from src.agent_tools import ToolBlock  # noqa: E402  (import first to avoid circular)
 
 
@@ -18,7 +18,7 @@ async def test_project_read_uses_project_workspace(tmp_path):
     )
 
     desc, result = await execute_tool_block(
-        ToolBlock("read_file", "app.py"), owner="alice", project_policy=policy
+        ToolBlock("read_file", "app.py"), owner="alice", project_policy=policy, security_context=NO_TOOL_SECURITY_CONTEXT
     )
 
     assert result["exit_code"] == 0
@@ -41,6 +41,7 @@ async def test_project_write_requires_pending_when_auto_approve_off(tmp_path):
         ToolBlock("write_file", "app.py\nprint('hi')"),
         owner="alice",
         project_policy=policy,
+        security_context=NO_TOOL_SECURITY_CONTEXT,
     )
 
     assert result["pending"] is True
@@ -61,7 +62,7 @@ async def test_project_static_bash_auto_approve_runs_in_project_home(tmp_path):
     )
 
     desc, result = await execute_tool_block(
-        ToolBlock("bash", "pwd"), owner="alice", project_policy=policy
+        ToolBlock("bash", "pwd"), owner="alice", project_policy=policy, security_context=NO_TOOL_SECURITY_CONTEXT
     )
 
     assert result["exit_code"] == 0
@@ -81,7 +82,7 @@ async def test_project_non_static_bash_forces_pending_even_auto_approve(tmp_path
     )
 
     desc, result = await execute_tool_block(
-        ToolBlock("bash", "echo $(pwd)"), owner="alice", project_policy=policy
+        ToolBlock("bash", "echo $(pwd)"), owner="alice", project_policy=policy, security_context=NO_TOOL_SECURITY_CONTEXT
     )
 
     assert result["pending"] is True

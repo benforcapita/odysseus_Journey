@@ -385,7 +385,7 @@ def setup_project_routes() -> APIRouter:
     async def approve_project_operation(project_id: str, pending_id: str, request: Request):
         _desktop_required()
         from src.project_approval import resolve_pending
-        from src.tool_execution import ProjectPolicy, execute_tool_block
+        from src.tool_execution import ProjectPolicy, execute_tool_block, NO_TOOL_SECURITY_CONTEXT
         from src.agent_tools import ToolBlock
         payload = await request.json()
         decision = "approve" if payload.get("decision") == "approve" else "reject"
@@ -413,7 +413,7 @@ def setup_project_routes() -> APIRouter:
             save_project_message(project_id, owner, "tool", f"rejected: {summary}", resolved)
             return {"status": "reject", "pending_id": pending_id}
         block = ToolBlock(operation.get("tool", ""), operation.get("content") or operation.get("command") or "")
-        desc, result = await execute_tool_block(block, owner=owner, project_policy=policy)
+        desc, result = await execute_tool_block(block, owner=owner, project_policy=policy, security_context=NO_TOOL_SECURITY_CONTEXT)
         save_project_message(project_id, owner, "tool", desc, {**resolved, **result})
         return {"status": "approve", "pending_id": pending_id, "result": result}
 
