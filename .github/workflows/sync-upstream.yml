@@ -1,0 +1,70 @@
+name: Sync upstream → dev → main
+
+# Daily sync of the fork with upstream.
+#   1. Fetch upstream/dev and merge it into dev (dev carries a few local
+#      commits, so this is a real merge, not a fast-forward).
+#   2. Push dev to origin.
+#   3. Merge dev into main and push main to origin.
+# If either merge hits a conflict, the step fails and the remote is left
+# untouched (no force-push, no half-merged branch) — a human resolves it.
+# Runs automatically once a day and on manual dispatch.
+
+on:
+  schedule:
+    # 06:00 UTC daily
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/pewdiepie-archdaemon/odysseus.git
+          git fetch upstream
+
+      - name: Merge upstream/dev into dev and push
+        run: |
+          set -euo pipefail
+          git checkout dev
+          # Real merge: dev is ahead of upstream/dev by a few local commits.
+          # --no-ff keeps the sync point visible as a merge commit.
+          git merge --no-ff upstream/dev -m "chore(sync): merge upstream/dev into dev"
+          git push origin dev
+
+      - name: Merge dev into main and push
+        run: |
+          set -euo pipefail
+          git checkout main
+          git merge --no-ff dev -m "chore(sync): merge dev into main"
+          git push origin main
+
+      - name: Report status
+        if: always()
+        run: |
+          echo "## Upstream sync" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Synced upstream/dev → dev → main." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Sync failed — likely a merge conflict. Resolve locally and re-run." >> $GITHUB_STEP_SUMMARY
+          fi
+          git log --oneline -5 origin/main 2>/dev/null || true
