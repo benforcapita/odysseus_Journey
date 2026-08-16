@@ -104,3 +104,8 @@ compound.config.json
 *.error.log
 _scratch/
 /odysseus/
+
+# Local superpowers scratch/brainstorm
+.superpowers/
+# Merge/conflict backups
+*.orig
